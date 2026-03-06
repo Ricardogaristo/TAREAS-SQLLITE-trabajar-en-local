@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Gestor{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <h4 style="font-weight:700; margin:0;">◈ Dashboard</h4>
+    <div style="font-family:var(--mono); font-size:.75rem; color:var(--text-muted); margin-top:.2rem;">
+      {{ fecha_actual }}
+    </div>
+  </div>
+  <span class="badge-g badge-{{ 'done' if color_nivel=='success' else ('pending' if color_nivel=='warning' else 'cat') }}"
+        style="font-size:.8rem; padding:.35rem .9rem;">
+    Productividad: {{ nivel }}
+  </span>
+</div>
+
+<!-- ── KPI Cards ──────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card blue">
+      <div class="stat-label">Total</div>
+      <div class="stat-value">{{ total }}</div>
+      <div style="font-size:.8rem; color:var(--text-muted);">tareas</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card green">
+      <div class="stat-label">Completadas</div>
+      <div class="stat-value" style="color:var(--accent);">{{ completadas }}</div>
+      <div style="font-size:.8rem; color:var(--text-muted);">finalizadas</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card amber">
+      <div class="stat-label">Pendientes</div>
+      <div class="stat-value" style="color:var(--amber);">{{ pendientes }}</div>
+      <div style="font-size:.8rem; color:var(--text-muted);">en progreso</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card red">
+      <div class="stat-label">Progreso</div>
+      <div class="stat-value" style="color:var(--blue); font-size:1.8rem;">{{ porcentaje }}%</div>
+      <div style="font-size:.8rem; color:var(--text-muted);">completado</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Progress bar ──────────────────────── -->
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--accent)">▰</span>
+    <span class="gcard-title">Progreso general</span>
+    <span style="margin-left:auto; font-family:var(--mono); font-size:.78rem; color:var(--accent);">
+      {{ porcentaje }}%
+    </span>
+  </div>
+  <div class="gcard-body">
+    <div style="height:10px; background:var(--bg3); border-radius:99px; overflow:hidden;">
+      <div style="height:100%; width:{{ porcentaje }}%; background:linear-gradient(90deg,var(--accent),#4dc663);
+                  border-radius:99px; transition:width 1s ease;"></div>
+    </div>
+    <div class="d-flex justify-content-between mt-2" style="font-family:var(--mono); font-size:.72rem; color:var(--text-muted);">
+      <span>0%</span><span>50%</span><span>100%</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Chart + Recent tasks ──────────────── -->
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="gcard h-100">
+      <div class="gcard-header">
+        <span style="color:var(--blue)">◉</span>
+        <span class="gcard-title">Por categoría</span>
+      </div>
+      <div class="gcard-body">
+        <canvas id="chartCat" style="max-height:260px;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="gcard h-100">
+      <div class="gcard-header">
+        <span style="color:var(--text-muted)">⏱</span>
+        <span class="gcard-title">Últimas tareas</span>
+      </div>
+      <div class="gcard-body p-0">
+        <ul style="list-style:none; margin:0; padding:0;">
+          {% for t in ultimas_tareas %}
+          {# t[0]=id t[1]=descripcion t[4]=completada t[5]=codigo #}
+          <li style="display:flex; align-items:center; gap:.75rem;
+                     padding:.75rem 1.25rem; border-bottom:1px solid var(--border-soft);">
+            {% if t[4]==1 %}
+              <span class="badge-g badge-done" style="flex-shrink:0; font-size:.65rem;">✔</span>
+            {% else %}
+              <span class="badge-g badge-pending" style="flex-shrink:0; font-size:.65rem;">●</span>
+            {% endif %}
+            <span style="font-family:var(--mono); font-size:.72rem; color:var(--text-muted); flex-shrink:0;">
+              {{ t[5] if t[5] else '—' }}
+            </span>
+            <span style="font-size:.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              {{ t[1] }}
+            </span>
+          </li>
+          {% else %}
+          <li style="padding:2rem; text-align:center; color:var(--text-muted); font-size:.85rem;">
+            Sin tareas recientes.
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Quick actions ─────────────────────── -->
+<div class="gcard mt-3">
+  <div class="gcard-header">
+    <span style="color:var(--text-muted)">⚡</span>
+    <span class="gcard-title">Accesos rápidos</span>
+  </div>
+  <div class="gcard-body">
+    <div class="d-flex flex-wrap gap-2">
+      <a href="/" class="btn btn-g-ghost">⊞ Ver tareas</a>
+      <a href="/exportar" class="btn btn-g-success">⬇ Exportar Excel</a>
+      {% if session.get('es_admin')==1 %}
+      <a href="/admin" class="btn btn-g-warning">⚙ Panel Admin</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  const cats  = {{ categorias | tojson }};
+  const cnts  = {{ cantidades | tojson }};
+  const isLight = document.body.classList.contains('light');
+  const gridColor = isLight ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.06)';
+  const textColor = isLight ? '#636c76' : '#7d8590';
+
+  new Chart(document.getElementById('chartCat'), {
+    type: 'bar',
+    data: {
+      labels: cats,
+      datasets: [{
+        label: 'Tareas',
+        data: cnts,
+        backgroundColor: cats.map((_,i)=>`hsl(${140 + i*28},55%,${isLight?38:48}%)`),
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161b22',
+          borderColor: '#30363d',
+          borderWidth: 1,
+          titleColor: '#e6edf3',
+          bodyColor: '#7d8590',
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { color: textColor, stepSize: 1 },
+          grid: { color: gridColor },
+        },
+        x: {
+          ticks: { color: textColor },
+          grid: { display: false },
+        }
+      }
+    }
+  });
+</script>
+{% endblock %}

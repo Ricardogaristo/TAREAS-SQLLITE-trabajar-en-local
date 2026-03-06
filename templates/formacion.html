@@ -1,0 +1,1184 @@
+{% extends "base.html" %}
+{% block title %}Formación — Gestor{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <h4 style="font-weight:700; margin:0;">🎓 Formación</h4>
+    <div style="font-family:var(--mono); font-size:.75rem; color:var(--text-muted); margin-top:.2rem;">
+      Gestión de alumnos · {{ alumnos|length }} alumno{{ 's' if alumnos|length != 1 else '' }}
+    </div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('formacion.exportar_excel') }}" class="btn btn-g-success">
+      ⬇ Descargar Excel
+    </a>
+    <a href="{{ url_for('formacion.formacion_alarmas') }}" class="btn btn-g-warning"
+       style="position:relative;">
+      🔔 Alarmas
+      {% if alarmas_pendientes > 0 %}
+      <span style="
+        position:absolute; top:-7px; right:-8px;
+        background:var(--red); color:#fff;
+        font-size:.62rem; font-weight:800;
+        min-width:18px; height:18px;
+        border-radius:99px; display:flex; align-items:center; justify-content:center;
+        padding:0 4px; font-family:var(--mono);
+        box-shadow:0 0 0 2px var(--bg);
+        pointer-events:none;
+      ">{{ alarmas_pendientes }}</span>
+      {% endif %}
+    </a>
+    <a href="{{ url_for('formacion.formacion_archivados') }}" class="btn btn-g-ghost"
+       style="position:relative;">
+      📦 Archivados
+      {% if archivados_count > 0 %}
+      <span style="
+        position:absolute; top:-7px; right:-8px;
+        background:var(--text-muted); color:var(--bg);
+        font-size:.62rem; font-weight:800;
+        min-width:18px; height:18px;
+        border-radius:99px; display:flex; align-items:center; justify-content:center;
+        padding:0 4px; font-family:var(--mono);
+        box-shadow:0 0 0 2px var(--bg);
+        pointer-events:none;
+      ">{{ archivados_count }}</span>
+      {% endif %}
+    </a>
+    <a href="{{ url_for('formacion.formacion_dashboard') }}" class="btn btn-g-primary">
+      ◈ Ver Dashboard
+    </a>
+    <a href="{{ url_for('formacion.formacion_ia') }}" class="btn btn-g-primary">
+      🤖 IA
+    </a>
+    {% if alumnos %}
+    <form method="POST" action="{{ url_for('formacion.borrar_todos') }}"
+          onsubmit="return confirm('¿Borrar TODOS los alumnos? Esta acción no se puede deshacer.')">
+      <button type="submit" class="btn btn-g-danger">🗑 Borrar todos</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Alertas -->
+{% for err in errores %}
+<div class="galert galert-danger">✖ {{ err }}</div>
+{% endfor %}
+{% if exito %}
+<div class="galert galert-success">{{ exito }}</div>
+{% endif %}
+
+<!-- ── Importar Excel ──────────────────────────────────────────────────────── -->
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--accent)">⬆</span>
+    <span class="gcard-title">Importar alumnos desde Excel</span>
+  </div>
+  <div class="gcard-body">
+    <form method="POST" enctype="multipart/form-data">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-6">
+          <label class="form-label">Archivo Excel (.xlsx / .xls)</label>
+          <input type="file" name="excel" accept=".xlsx,.xls" class="form-control" required>
+          <div style="margin-top:.5rem; font-size:.78rem; color:var(--text-muted);">
+            El Excel debe tener columnas:
+            <span style="font-family:var(--mono); color:var(--blue);">Nombre del curso</span>,
+            <span style="font-family:var(--mono); color:var(--blue);">Nombre</span>,
+            <span style="font-family:var(--mono); color:var(--blue);">Progreso (%)</span>,
+            <span style="font-family:var(--mono); color:var(--blue);">Exámenes</span>,
+            <span style="font-family:var(--mono); color:var(--blue);">Fecha Inicio</span>,
+            <span style="font-family:var(--mono); color:var(--blue);">Fecha Fin</span>,
+            <span style="font-family:var(--mono); color:var(--blue);">Teléfono</span>
+            (el orden puede variar, se detectan automáticamente).
+          </div>
+        </div>
+        <div class="col-md-3">
+          <a href="{{ url_for('formacion.descargar_modelo') }}" class="btn btn-g-ghost" title="Descarga la plantilla Excel para importar alumnos">
+            📋 Descargar Modelo
+          </a>
+          <button type="submit" class="btn btn-g-primary w-100">⬆ Importar</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Archivar curso ──────────────────────────────────────────────────────── -->
+{% set cursos_activos = alumnos | map(attribute='curso') | select | unique | list | sort %}
+{% if cursos_activos %}
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--text-muted)">📦</span>
+    <span class="gcard-title">Archivar curso finalizado</span>
+    <span style="font-size:.75rem; color:var(--text-muted); margin-left:auto;">
+      Los alumnos del curso se moverán al archivador y no aparecerán en la lista activa
+    </span>
+  </div>
+  <div class="gcard-body">
+    <form method="POST" action="{{ url_for('formacion.archivar_curso') }}"
+          onsubmit="return confirm('¿Archivar el curso «' + document.getElementById('sel-curso-arch').value + '»? Los alumnos se moverán al archivador. Podrás restaurarlos en cualquier momento.')">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label">Seleccionar curso</label>
+          <select name="curso" id="sel-curso-arch" class="form-control" required>
+            <option value="" disabled selected>— Elegir curso —</option>
+            {% for c in cursos_activos %}
+            {% set cnt = alumnos | selectattr('curso', 'equalto', c) | list | length %}
+            <option value="{{ c }}">{{ c }}  ({{ cnt }} alumno{{ 's' if cnt != 1 else '' }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-g-ghost w-100"
+                  style="border-color:var(--amber); color:var(--amber);">
+            📦 Archivar curso
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Lista de alumnos ───────────────────────────────────────────────────── -->
+<div class="gcard">
+  <div class="gcard-header">
+    <span style="color:var(--text-muted)">👥</span>
+    <span class="gcard-title">Lista de alumnos</span>
+    <span id="badge-count" class="badge-g badge-pending ms-auto" style="font-size:.68rem;">
+      {{ alumnos|length }} registros
+    </span>
+  </div>
+  <div class="gcard-body pb-0">
+
+    <!-- Filtros: búsqueda + curso + estado + por página -->
+    <div class="row g-2 mb-3 align-items-end">
+
+      <!-- Búsqueda libre -->
+      <div class="col-12 col-md-4">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="buscador" class="form-control"
+                 placeholder="Buscar por nombre o curso…">
+        </div>
+      </div>
+
+      <!-- Selector de curso + borrar curso -->
+      <div class="col-6 col-md-3" style="display:flex; gap:.4rem; align-items:center;">
+        <select id="sel-curso" class="form-select" style="flex:1;">
+          <option value="">Todos los cursos</option>
+          {% for c in cursos_activos %}
+          {% set cnt = alumnos | selectattr('curso', 'equalto', c) | list | length %}
+          <option value="{{ c }}">{{ c }} ({{ cnt }})</option>
+          {% endfor %}
+        </select>
+        <button type="button" id="btn-borrar-curso"
+                onclick="borrarCursoSeleccionado()"
+                class="btn btn-g-danger btn-sm"
+                title="Borrar todos los alumnos del curso seleccionado"
+                style="flex-shrink:0; display:none; padding:.45rem .65rem;">
+          🗑
+        </button>
+      </div>
+
+      <!-- Selector de estado -->
+      <div class="col-6 col-md-2">
+        <select id="sel-estado" class="form-select">
+          <option value="">Todos los estados</option>
+          <option value="supera">✔ Supera 75%</option>
+          <option value="no_supera">● Bajo 75%</option>
+        </select>
+      </div>
+
+      <!-- Registros por página -->
+      <div class="col-6 col-md-2">
+        <select id="sel-perpage" class="form-select">
+          <option value="10">10 por página</option>
+          <option value="25" selected>25 por página</option>
+          <option value="50">50 por página</option>
+          <option value="9999">Ver todos</option>
+        </select>
+      </div>
+
+      <!-- Botón limpiar filtros -->
+      <div class="col-6 col-md-1 d-flex">
+        <button onclick="limpiarFiltros()" class="btn btn-g-ghost w-100" title="Limpiar filtros">✕</button>
+      </div>
+
+    </div>
+
+    <div class="table-responsive">
+      <table class="gtable" id="tablaAlumnos">
+        <thead>
+          <tr>
+            <th style="max-width:160px;">Curso</th>
+            <th>Nombre</th>
+            <th style="min-width:120px;">Progreso</th>
+            <th style="text-align:center;">Exam.</th>
+            <th style="text-align:center; white-space:nowrap;">Import.</th>
+            <th style="white-space:nowrap;">Inicio / Fin</th>
+            <th style="text-align:center;">Estado</th>
+            <th style="min-width:140px;">Teléfono</th>
+            <th style="text-align:center;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-alumnos">
+          {% for a in alumnos %}
+          {% set curso_val = a['curso'] if a['curso'] else '—' %}
+          {% set nombre_val = a['nombre'] %}
+          {% set examenes_val = a['examenes'] if a['examenes'] is not none else 0 %}
+          <tr data-search="{{ nombre_val|lower }} {{ curso_val|lower }}"
+              data-curso="{{ curso_val }}"
+              data-estado="{{ 'supera' if a['supera_75'] == 1 else 'no_supera' }}">
+
+            <td data-label="Curso" style="max-width:160px;">
+              <span class="badge-g badge-cat" style="max-width:155px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;" title="{{ curso_val }}">{{ curso_val }}</span>
+            </td>
+
+            <td data-label="Nombre" style="font-weight:600; font-size:.85rem;">{{ nombre_val }}</td>
+
+            <td data-label="Progreso" style="min-width:120px;">
+              <div style="display:flex; align-items:center; gap:.4rem;">
+                <div style="flex:1; height:6px; background:var(--bg3); border-radius:99px; overflow:hidden; min-width:55px;">
+                  <div style="height:100%; width:{{ [a['progreso'], 100]|min }}%;
+                              background:{{ 'var(--accent)' if a['progreso'] >= 75 else ('var(--amber)' if a['progreso'] >= 50 else 'var(--red)') }};
+                              border-radius:99px;"></div>
+                </div>
+                <span style="font-family:var(--mono); font-size:.75rem; min-width:32px;">{{ a['progreso'] }}%</span>
+                {# ── Flecha de tendencia ── #}
+                {% if a['avanzo'] == 1 %}
+                  <span title="Avanzó {{ a['delta_progreso'] }}% desde última importación"
+                        style="font-size:.8rem; color:var(--accent); line-height:1; flex-shrink:0;">▲</span>
+                {% elif a['avanzo'] == -1 %}
+                  <span title="Retrocedió {{ a['delta_progreso']|abs }}% desde última importación"
+                        style="font-size:.8rem; color:var(--red); line-height:1; flex-shrink:0;">▼</span>
+                {% else %}
+                  <span title="Sin cambio desde última importación"
+                        style="font-size:.75rem; color:var(--text-muted); line-height:1; flex-shrink:0;">=</span>
+                {% endif %}
+              </div>
+              {# Delta numérico si hay cambio #}
+              {% if a['delta_progreso'] and a['delta_progreso'] != 0 %}
+              <div style="font-size:.67rem; font-family:var(--mono); margin-top:.15rem;
+                          color:{{ 'var(--accent)' if a['delta_progreso'] > 0 else 'var(--red)' }};">
+                {{ '+' if a['delta_progreso'] > 0 else '' }}{{ a['delta_progreso'] }}%
+              </div>
+              {% endif %}
+            </td>
+
+            <td data-label="Exámenes" style="font-family:var(--mono); font-size:.82rem; text-align:center;">
+              {{ examenes_val }}
+            </td>
+
+            {# ── Importaciones — clickable ── #}
+            {% set n_imp = importaciones_por_curso.get(curso_val, 0) %}
+            <td data-label="Import." style="text-align:center; white-space:nowrap;">
+              {% if n_imp > 0 %}
+              <button type="button"
+                      onclick="abrirHistorial({{ a['id'] }}, '{{ nombre_val | replace("'","\\\'") }}')"
+                      style="background:none; border:none; cursor:pointer; padding:.15rem .3rem;
+                             border-radius:6px; transition:background .15s;"
+                      onmouseover="this.style.background='var(--bg3)'"
+                      onmouseout="this.style.background='none'"
+                      title="Ver historial de importaciones">
+                <span style="font-family:var(--mono); font-size:.82rem; font-weight:700;
+                             color:{{ 'var(--blue)' if n_imp > 1 else 'var(--text-muted)' }};
+                             text-decoration:underline; text-decoration-style:dotted;">
+                  {{ n_imp }}
+                </span>
+                <div style="font-size:.6rem; color:var(--text-muted); line-height:1; margin-top:.1rem;">
+                  {{ 'actualizac.' if n_imp > 1 else 'primera' }}
+                </div>
+              </button>
+              {% else %}
+              <span style="font-family:var(--mono); font-size:.78rem; color:var(--text-muted);">—</span>
+              {% endif %}
+            </td>
+
+            <td data-label="Inicio / Fin" style="font-family:var(--mono); font-size:.72rem; white-space:nowrap; color:var(--text-muted);">
+              <div>{{ a['fecha_inicio'] if a['fecha_inicio'] else '—' }}</div>
+              <div style="color:var(--text-muted); opacity:.7;">{{ a['fecha_fin'] if a['fecha_fin'] else '—' }}</div>
+            </td>
+
+            <td data-label="Estado" style="text-align:center;">
+              {% if a['supera_75'] == 1 %}
+                <span class="badge-g badge-done" style="font-size:.65rem; padding:.2rem .5rem;">✔ OK</span>
+              {% else %}
+                <span class="badge-g badge-pending" style="font-size:.65rem; padding:.2rem .5rem;">● &lt;75%</span>
+              {% endif %}
+            </td>
+
+            <!-- Teléfono editable inline -->
+            <td data-label="Teléfono" style="min-width:140px;">
+              <form method="POST" action="{{ url_for('formacion.editar_alumno', alumno_id=a['id']) }}"
+                    style="display:flex; gap:.3rem; align-items:center;">
+                <input type="text" name="telefono"
+                       value="{{ a['telefono'] if a['telefono'] else '' }}"
+                       class="form-control" style="font-size:.75rem; padding:.25rem .5rem; min-width:90px;"
+                       placeholder="+549…">
+                <button type="submit" class="btn btn-g-ghost btn-sm" title="Guardar teléfono" style="padding:.25rem .45rem; font-size:.78rem;">💾</button>
+              </form>
+            </td>
+
+            <td data-label="Acciones" style="white-space:nowrap; text-align:center;">
+              <div style="display:flex; gap:.3rem; align-items:center; justify-content:center;">
+                {% if a['telefono'] %}
+                  <a href="{{ url_for('formacion.whatsapp_alumno', alumno_id=a['id']) }}"
+                     target="_blank" class="btn btn-g-success btn-sm" title="Enviar WhatsApp"
+                     style="padding:.28rem .5rem; font-size:.78rem;">💬</a>
+                {% else %}
+                  <span class="btn btn-g-ghost btn-sm" style="opacity:.3; cursor:default; padding:.28rem .5rem; font-size:.78rem;" title="Sin teléfono">💬</span>
+                {% endif %}
+                <button type="button"
+                        class="btn btn-g-primary btn-sm"
+                        title="Redactar mensaje para Moodle"
+                        style="padding:.28rem .5rem; font-size:.78rem;"
+                        onclick="abrirMoodle({
+                          nombre:   '{{ nombre_val | replace("'","&#39;") }}',
+                          curso:    '{{ curso_val  | replace("'","&#39;") }}',
+                          progreso: {{ a['progreso'] }},
+                          examenes: {{ examenes_val }},
+                          supera:   {{ 1 if a['supera_75'] == 1 else 0 }},
+                          inicio:   '{{ a["fecha_inicio"] if a["fecha_inicio"] else "" }}',
+                          fin:      '{{ a["fecha_fin"]    if a["fecha_fin"]    else "" }}'
+                        })">📨</button>
+                <button type="button"
+                        class="btn btn-g-ghost btn-sm btn-ia-alumno"
+                        data-id="{{ a['id'] }}"
+                        data-nombre="{{ nombre_val }}"
+                        data-curso="{{ curso_val }}"
+                        title="Analizar con IA"
+                        style="padding:.28rem .5rem; font-size:.78rem;">🤖</button>
+                <a href="{{ url_for('formacion.eliminar_alumno', alumno_id=a['id']) }}"
+                   class="btn btn-g-danger btn-sm"
+                   style="padding:.28rem .5rem; font-size:.78rem;"
+                   onclick="return confirm('¿Eliminar a {{ nombre_val }}? Esta acción no se puede deshacer.')">🗑</a>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr id="tr-empty">
+            <td colspan="9" style="text-align:center; padding:3rem; color:var(--text-muted);">
+              <div style="font-size:2rem; margin-bottom:.5rem;">🎓</div>
+              No hay alumnos aún. Importá un Excel para comenzar.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Sin resultados por filtro -->
+      <div id="no-results" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
+        <div style="font-size:1.8rem; margin-bottom:.5rem;">🔍</div>
+        Ningún alumno coincide con los filtros aplicados.
+      </div>
+    </div>
+
+    <!-- ── Paginación ──────────────────────────────────────────────────────── -->
+    <div id="paginacion-wrap"
+         style="padding:.85rem 0 1.25rem; border-top:1px solid var(--border); margin-top:.5rem; display:none;">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+
+        <!-- Info de registros -->
+        <span id="pag-info"
+              style="font-family:var(--mono); font-size:.75rem; color:var(--text-muted);">
+        </span>
+
+        <!-- Controles de página -->
+        <ul class="gpagination" id="pag-controls" style="margin:0;"></ul>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Formulario oculto para borrar curso seleccionado -->
+<form id="form-borrar-curso" method="POST"
+      action="/formacion/borrar-curso"
+      style="display:none;">
+  <input type="hidden" name="curso" id="input-borrar-curso">
+</form>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MODAL MENSAJE MOODLE
+══════════════════════════════════════════════════════════════════ -->
+<div id="modal-moodle" style="
+  display:none; position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center; padding:1rem;">
+
+  <div style="
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:12px; width:100%; max-width:620px;
+    box-shadow:0 20px 60px rgba(0,0,0,.4);
+    display:flex; flex-direction:column; max-height:90vh;">
+
+    <!-- Cabecera -->
+    <div style="
+      padding:1.1rem 1.4rem .9rem;
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; gap:.75rem; flex-shrink:0;">
+      <span style="font-size:1.2rem;">📨</span>
+      <div style="flex:1;">
+        <div style="font-weight:700; font-size:.98rem;">Mensaje para Moodle</div>
+        <div id="modal-alumno-info" style="font-family:var(--mono); font-size:.72rem; color:var(--text-muted); margin-top:.1rem;"></div>
+      </div>
+      <button onclick="cerrarMoodle()" style="
+        background:none; border:none; color:var(--text-muted);
+        font-size:1.3rem; cursor:pointer; line-height:1; padding:.2rem .4rem;
+        border-radius:6px; transition:background .15s;"
+        onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='none'">✕</button>
+    </div>
+
+    <!-- Cuerpo scrolleable -->
+    <div style="padding:1.2rem 1.4rem; overflow-y:auto; flex:1;">
+
+      <!-- Tipo de mensaje -->
+      <div style="margin-bottom:1rem;">
+        <label style="font-size:.78rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:.4rem;">Tipo de mensaje</label>
+        <div style="display:flex; gap:.5rem; flex-wrap:wrap;" id="tipo-pills">
+          <button class="tipo-pill active" data-tipo="seguimiento" onclick="selTipo(this)">📋 Seguimiento</button>
+          <button class="tipo-pill" data-tipo="felicitacion"  onclick="selTipo(this)">🎉 Felicitación</button>
+          <button class="tipo-pill" data-tipo="advertencia"   onclick="selTipo(this)">⚠️ Advertencia</button>
+          <button class="tipo-pill" data-tipo="recordatorio"  onclick="selTipo(this)">🔔 Recordatorio</button>
+          <button class="tipo-pill" data-tipo="libre"         onclick="selTipo(this)">✏️ Libre</button>
+        </div>
+      </div>
+
+      <!-- Asunto -->
+      <div style="margin-bottom:.85rem;">
+        <label style="font-size:.78rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:.4rem;">
+          Asunto
+          <span id="copy-asunto" onclick="copiarTexto('input-asunto', this)"
+                style="float:right; cursor:pointer; font-weight:400; color:var(--blue); font-size:.72rem;">📋 Copiar</span>
+        </label>
+        <input type="text" id="input-asunto" class="form-control"
+               style="font-size:.85rem;"
+               placeholder="Asunto del mensaje…">
+      </div>
+
+      <!-- Mensaje -->
+      <div style="margin-bottom:.85rem;">
+        <label style="font-size:.78rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:.4rem;">
+          Mensaje
+          <span id="copy-msg" onclick="copiarTexto('input-mensaje', this)"
+                style="float:right; cursor:pointer; font-weight:400; color:var(--blue); font-size:.72rem;">📋 Copiar</span>
+        </label>
+        <textarea id="input-mensaje" class="form-control"
+                  style="min-height:180px; font-size:.84rem; line-height:1.6; resize:vertical;"
+                  placeholder="El mensaje aparecerá aquí…"></textarea>
+      </div>
+
+      <!-- Estado de generación IA -->
+      <div id="ia-status" style="display:none; align-items:center; gap:.6rem;
+           font-size:.78rem; color:var(--text-muted); margin-bottom:.5rem;">
+        <span id="ia-spinner" style="display:inline-block; animation:spin .8s linear infinite;">⟳</span>
+        <span id="ia-status-text">Generando con IA…</span>
+      </div>
+
+    </div>
+
+    <!-- Pie -->
+    <div style="
+      padding:.9rem 1.4rem 1.1rem;
+      border-top:1px solid var(--border);
+      display:flex; gap:.6rem; justify-content:space-between; align-items:center; flex-shrink:0;">
+      <button id="btn-generar-ia" onclick="generarIA()" class="btn btn-g-primary" style="font-size:.82rem;">
+        ✨ Generar con IA
+      </button>
+      <div style="display:flex; gap:.5rem;">
+        <button onclick="copiarTodo()" class="btn btn-g-success" style="font-size:.82rem;">📋 Copiar todo</button>
+        <button onclick="cerrarMoodle()" class="btn btn-g-ghost" style="font-size:.82rem;">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.tipo-pill {
+  padding:.3rem .75rem; border-radius:99px; border:1px solid var(--border);
+  background:var(--bg3); color:var(--text-muted); font-size:.76rem;
+  cursor:pointer; transition:all .15s; font-family:inherit;
+}
+.tipo-pill.active, .tipo-pill:hover {
+  background:var(--accent); color:#fff; border-color:var(--accent);
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ── MODAL MOODLE ──────────────────────────────────────────────── */
+
+let _alumnoActual = null;
+let _tipoActual   = 'seguimiento';
+
+function abrirMoodle(alumno) {
+  _alumnoActual = alumno;
+  _tipoActual   = 'seguimiento';
+
+  // Reset pills
+  document.querySelectorAll('.tipo-pill').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tipo="seguimiento"]').classList.add('active');
+
+  // Info header
+  const estado = alumno.supera ? '✔ Supera 75%' : '● Bajo 75%';
+  document.getElementById('modal-alumno-info').textContent =
+    `${alumno.nombre}  ·  ${alumno.curso}  ·  ${alumno.progreso}%  ·  ${estado}`;
+
+  // Asunto y mensaje por defecto (plantilla rápida)
+  rellenarPlantilla();
+
+  // Mostrar modal
+  const modal = document.getElementById('modal-moodle');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function cerrarMoodle() {
+  document.getElementById('modal-moodle').style.display = 'none';
+  document.body.style.overflow = '';
+  document.getElementById('ia-status').style.display = 'none';
+}
+
+// Cerrar al clic en fondo
+document.getElementById('modal-moodle').addEventListener('click', function(e) {
+  if (e.target === this) cerrarMoodle();
+});
+
+function selTipo(btn) {
+  document.querySelectorAll('.tipo-pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  _tipoActual = btn.dataset.tipo;
+  rellenarPlantilla();
+}
+
+/* ── Plantillas rápidas sin IA ─────────────────────────────────── */
+function rellenarPlantilla() {
+  if (!_alumnoActual) return;
+  const a = _alumnoActual;
+  const finStr = a.fin ? ` (fecha límite: ${a.fin})` : '';
+
+  const plantillas = {
+    seguimiento: {
+      asunto: `Seguimiento de tu progreso — ${a.curso}`,
+      msg: `Hola ${a.nombre},\n\nMe pongo en contacto contigo para hacer un seguimiento de tu avance en el curso «${a.curso}».\n\nActualmente tienes un progreso del ${a.progreso}% y has realizado ${a.examenes} examen${a.examenes !== 1 ? 'es' : ''}${finStr}.\n\n${a.supera ? 'Vas por buen camino — sigue así.' : 'Nos gustaría apoyarte para que puedas alcanzar el objetivo del 75% de progreso.'}\n\nSi tienes alguna duda o necesitas ayuda, no dudes en escribirme.\n\nUn saludo,\nRicardo`
+    },
+    felicitacion: {
+      asunto: `¡Enhorabuena por tu progreso! — ${a.curso}`,
+      msg: `Hola ${a.nombre},\n\n¡Quiero felicitarte por tu excelente desempeño en el curso «${a.curso}»!\n\nHas alcanzado un progreso del ${a.progreso}% y has completado ${a.examenes} examen${a.examenes !== 1 ? 'es' : ''}. Es un logro destacable que refleja tu dedicación y esfuerzo.\n\nTe animamos a continuar con este ritmo para completar el curso con éxito.\n\nUn saludo,\nRicardo`
+    },
+    advertencia: {
+      asunto: `Aviso importante — Progreso en ${a.curso}`,
+      msg: `Hola ${a.nombre},\n\nMe pongo en contacto contigo porque he detectado que tu progreso en el curso «${a.curso}» se encuentra en el ${a.progreso}%${finStr}.\n\nPara poder superar el curso es necesario alcanzar al menos el 75% de progreso. Te pedimos que te pongas al día lo antes posible, ya que aún no entraste en el curso.\n\nSi estás teniendo dificultades, no dudes en contactarnos para que podamos orientarte.\n\nUn saludo,\nRicardo`
+    },
+    recordatorio: {
+      asunto: `Recordatorio: curso «${a.curso}» pendiente`,
+      msg: `Hola ${a.nombre},\n\nTe enviamos este recordatorio para informarte de que tienes el curso «${a.curso}» pendiente de completar.\n\nTu progreso actual es del ${a.progreso}%${a.fin ? ` y el plazo de finalización es el ${a.fin}` : ''}.\n\nTe invitamos a acceder a la plataforma y retomar el curso cuando puedas.\n\nQuedamos a tu disposición para cualquier consulta.\n\nUn saludo,\nRicardo`
+    },
+    libre: {
+      asunto: ``,
+      msg: ``
+    }
+  };
+
+  const tmpl = plantillas[_tipoActual] || plantillas.seguimiento;
+  document.getElementById('input-asunto').value  = tmpl.asunto;
+  document.getElementById('input-mensaje').value = tmpl.msg;
+}
+
+/* ── Generar con IA (Claude API) ───────────────────────────────── */
+async function generarIA() {
+  if (!_alumnoActual) return;
+  const a = _alumnoActual;
+  const tipo = _tipoActual;
+
+  const btn    = document.getElementById('btn-generar-ia');
+  const status = document.getElementById('ia-status');
+  const stTxt  = document.getElementById('ia-status-text');
+
+  btn.disabled = true;
+  status.style.display = 'flex';
+  stTxt.textContent = 'Generando con IA…';
+
+  const prompt = `Eres el tutor de formación de una empresa. Debes redactar un mensaje para enviar a un alumno a través de la plataforma Moodle.
+
+Datos del alumno:
+- Nombre: ${a.nombre}
+- Curso: ${a.curso}
+- Progreso actual: ${a.progreso}%
+- Exámenes realizados: ${a.examenes}
+- Estado: ${a.supera ? 'Supera el 75% (aprobado)' : 'Está por debajo del 75% (no aprobado aún)'}
+${a.inicio ? `- Fecha de inicio del curso: ${a.inicio}` : ''}
+${a.fin    ? `- Fecha de fin del curso: ${a.fin}`        : ''}
+
+Tipo de mensaje solicitado: ${tipo}
+
+Devuelve ÚNICAMENTE un JSON con este formato exacto (sin markdown, sin texto adicional):
+{"asunto":"...", "mensaje":"..."}
+
+El mensaje debe ser profesional, cordial y en español. Usa saltos de línea reales (\\n) para separar párrafos. Máximo 5 párrafos cortos.`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    const data = await resp.json();
+    const raw  = (data.content || []).map(b => b.text || '').join('');
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+
+    document.getElementById('input-asunto').value  = parsed.asunto  || '';
+    document.getElementById('input-mensaje').value = parsed.mensaje || '';
+
+    stTxt.textContent = '✔ Mensaje generado';
+    setTimeout(() => { status.style.display = 'none'; }, 2000);
+
+  } catch (err) {
+    stTxt.textContent = '✖ Error al generar — comprueba la conexión';
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ── Copiar helpers ────────────────────────────────────────────── */
+function copiarTexto(inputId, spanEl) {
+  const el  = document.getElementById(inputId);
+  const txt = el.value.trim();
+  if (!txt) return;
+  navigator.clipboard.writeText(txt).then(() => {
+    const orig = spanEl.textContent;
+    spanEl.textContent = '✔ Copiado';
+    setTimeout(() => { spanEl.textContent = orig; }, 1500);
+  });
+}
+
+function copiarTodo() {
+  const asunto  = document.getElementById('input-asunto').value.trim();
+  const mensaje = document.getElementById('input-mensaje').value.trim();
+  const full    = (asunto ? `Asunto: ${asunto}\n${'─'.repeat(40)}\n` : '') + mensaje;
+  navigator.clipboard.writeText(full).then(() => {
+    const btn = document.querySelector('[onclick="copiarTodo()"]');
+    const orig = btn.textContent;
+    btn.textContent = '✔ Copiado';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
+}
+
+/* Cerrar con Escape */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') cerrarMoodle();
+});
+
+// ════════════════════════════════════════════════════════════════
+//  Borrar curso seleccionado
+// ════════════════════════════════════════════════════════════════
+const btnBorrarCurso = document.getElementById('btn-borrar-curso');
+
+// Muestra u oculta el botón según si hay curso seleccionado
+document.getElementById('sel-curso').addEventListener('change', function () {
+  btnBorrarCurso.style.display = this.value ? 'inline-flex' : 'none';
+});
+
+function borrarCursoSeleccionado() {
+  const curso = document.getElementById('sel-curso').value;
+  if (!curso) return;
+
+  // Contar alumnos visibles de ese curso
+  const cnt = allRows.filter(tr => tr.dataset.curso === curso).length;
+
+  if (!confirm(`¿Borrar los ${cnt} alumno${cnt !== 1 ? 's' : ''} del curso «${curso}»?\nEsta acción no se puede deshacer.`)) return;
+
+  document.getElementById('input-borrar-curso').value = curso;
+  document.getElementById('form-borrar-curso').submit();
+}
+// ════════════════════════════════════════════════════════════════
+//  Paginación + filtros cliente
+// ════════════════════════════════════════════════════════════════
+
+const PER_PAGE_DEFAULT = 25;
+
+// Referencias
+const inputBuscar  = document.getElementById('buscador');
+const selCurso     = document.getElementById('sel-curso');
+const selEstado    = document.getElementById('sel-estado');
+const selPerPage   = document.getElementById('sel-perpage');
+const tbody        = document.getElementById('tbody-alumnos');
+const noResults    = document.getElementById('no-results');
+const pagWrap      = document.getElementById('paginacion-wrap');
+const pagInfo      = document.getElementById('pag-info');
+const pagControls  = document.getElementById('pag-controls');
+const badgeCount   = document.getElementById('badge-count');
+
+// Estado
+let currentPage  = 1;
+
+// Todas las filas de datos (excluye la fila "vacío")
+const allRows = Array.from(tbody.querySelectorAll('tr[data-search]'));
+
+// ── Filtrar filas según los controles activos ─────────────────
+function filteredRows() {
+  const q      = inputBuscar.value.toLowerCase().trim();
+  const curso  = selCurso.value;
+  const estado = selEstado.value;
+
+  return allRows.filter(tr => {
+    const matchQ      = !q      || tr.dataset.search.includes(q);
+    const matchCurso  = !curso  || tr.dataset.curso  === curso;
+    const matchEstado = !estado || tr.dataset.estado === estado;
+    return matchQ && matchCurso && matchEstado;
+  });
+}
+
+// ── Renderizar página actual ──────────────────────────────────
+function render() {
+  const perPage = parseInt(selPerPage.value);
+  const rows    = filteredRows();
+  const total   = rows.length;
+  const pages   = perPage >= 9000 ? 1 : Math.ceil(total / perPage) || 1;
+
+  // Ajusta página si se quedó fuera de rango
+  if (currentPage > pages) currentPage = pages;
+
+  const start = perPage >= 9000 ? 0         : (currentPage - 1) * perPage;
+  const end   = perPage >= 9000 ? total      : Math.min(start + perPage, total);
+
+  // Ocultar todas las filas primero
+  allRows.forEach(tr => { tr.style.display = 'none'; });
+
+  // Mostrar sólo las de la página actual
+  rows.slice(start, end).forEach(tr => { tr.style.display = ''; });
+
+  // Fila "vacío"
+  const emptyRow = document.getElementById('tr-empty');
+  if (emptyRow) emptyRow.style.display = (total === 0) ? '' : 'none';
+
+  // Mensaje sin resultados
+  noResults.style.display = (total === 0 && allRows.length > 0) ? '' : 'none';
+
+  // Badge contador
+  badgeCount.textContent = total + ' registro' + (total !== 1 ? 's' : '');
+  badgeCount.className   = 'badge-g ms-auto ' + (total > 0 ? 'badge-pending' : 'badge-cat');
+  badgeCount.style.fontSize = '.68rem';
+
+  // Info de registros
+  if (perPage >= 9000 || pages <= 1) {
+    pagInfo.textContent = `${total} registro${total !== 1 ? 's' : ''}`;
+  } else {
+    pagInfo.textContent =
+      `Mostrando ${start + 1}–${end} de ${total} registro${total !== 1 ? 's' : ''}`;
+  }
+
+  // Paginación: mostrar sólo si hay más de una página
+  if (pages <= 1 || perPage >= 9000) {
+    pagWrap.style.display = 'none';
+  } else {
+    pagWrap.style.display = '';
+    buildPagination(pages);
+  }
+}
+
+// ── Construir controles de paginación ────────────────────────
+function buildPagination(pages) {
+  pagControls.innerHTML = '';
+
+  const btn = (label, page, disabled, active) => {
+    const li = document.createElement('li');
+    li.className = (disabled ? 'disabled' : '') + (active ? ' active' : '');
+    const a = document.createElement('a');
+    a.className   = 'gpage-link';
+    a.textContent = label;
+    a.href        = '#';
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      if (!disabled) { currentPage = page; render(); }
+    });
+    li.appendChild(a);
+    return li;
+  };
+
+  // Anterior
+  pagControls.appendChild(btn('← Ant', currentPage - 1, currentPage <= 1, false));
+
+  // Rango de páginas con elipsis
+  const range = pageRange(currentPage, pages);
+  range.forEach(p => {
+    if (p === '…') {
+      const li = document.createElement('li');
+      li.className = 'disabled';
+      li.innerHTML = '<span class="gpage-link" style="cursor:default;">…</span>';
+      pagControls.appendChild(li);
+    } else {
+      pagControls.appendChild(btn(p, p, false, p === currentPage));
+    }
+  });
+
+  // Siguiente
+  pagControls.appendChild(btn('Sig →', currentPage + 1, currentPage >= pages, false));
+}
+
+// Genera array de páginas con elipsis inteligente
+function pageRange(current, total) {
+  if (total <= 7) return Array.from({length: total}, (_, i) => i + 1);
+  const pages = new Set([1, total, current]);
+  if (current > 1) pages.add(current - 1);
+  if (current < total) pages.add(current + 1);
+  const sorted = Array.from(pages).sort((a, b) => a - b);
+  const result = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('…');
+    result.push(sorted[i]);
+  }
+  return result;
+}
+
+// ── Reset de página al cambiar filtros ────────────────────────
+function onFilter() { currentPage = 1; render(); }
+
+function limpiarFiltros() {
+  inputBuscar.value = '';
+  selCurso.value    = '';
+  selEstado.value   = '';
+  selPerPage.value  = '25';
+  currentPage       = 1;
+  render();
+}
+
+// ── Eventos ───────────────────────────────────────────────────
+inputBuscar.addEventListener('input',  onFilter);
+selCurso.addEventListener('change',   onFilter);
+selEstado.addEventListener('change',  onFilter);
+selPerPage.addEventListener('change', onFilter);
+
+// Arranque
+render();
+</script>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MODAL HISTORIAL DE IMPORTACIONES
+══════════════════════════════════════════════════════════════════ -->
+<div id="modal-historial" style="
+  display:none; position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center; padding:1rem;">
+
+  <div style="
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:14px; width:100%; max-width:520px;
+    box-shadow:0 24px 64px rgba(0,0,0,.45);
+    display:flex; flex-direction:column; max-height:88vh;">
+
+    <!-- Cabecera -->
+    <div style="
+      padding:1.1rem 1.4rem .85rem;
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; gap:.75rem; flex-shrink:0;">
+      <span style="font-size:1.15rem;">📈</span>
+      <div style="flex:1; min-width:0;">
+        <div style="font-weight:700; font-size:.95rem;" id="hist-titulo">Historial del alumno</div>
+        <div id="hist-subtitulo" style="font-family:var(--mono); font-size:.7rem; color:var(--text-muted); margin-top:.1rem;"></div>
+      </div>
+      <button onclick="cerrarHistorial()" style="
+        background:none; border:none; color:var(--text-muted);
+        font-size:1.25rem; cursor:pointer; line-height:1;
+        padding:.2rem .45rem; border-radius:6px; transition:background .15s;"
+        onmouseover="this.style.background='var(--bg3)'"
+        onmouseout="this.style.background='none'">✕</button>
+    </div>
+
+    <!-- KPI resumen -->
+    <div id="hist-kpi" style="
+      display:grid; grid-template-columns:repeat(3,1fr);
+      gap:.75rem; padding:1rem 1.4rem .75rem; flex-shrink:0;
+      border-bottom:1px solid var(--border);"></div>
+
+    <!-- Línea de tiempo -->
+    <div style="padding:1rem 1.4rem 1.4rem; overflow-y:auto; flex:1;">
+      <div id="hist-loading" style="text-align:center; padding:2rem; color:var(--text-muted); font-size:.85rem;">
+        <span style="display:inline-block; animation:spin .8s linear infinite;">⟳</span> Cargando…
+      </div>
+      <div id="hist-timeline" style="display:none;"></div>
+      <div id="hist-empty" style="display:none; text-align:center; padding:2rem; color:var(--text-muted); font-size:.84rem;">
+        Sin historial de importaciones registrado.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.htl-item {
+  display:flex; gap:.85rem; align-items:flex-start;
+  padding:.6rem 0; position:relative;
+}
+.htl-item:not(:last-child)::after {
+  content:''; position:absolute;
+  left:11px; top:30px; bottom:-4px; width:2px;
+  background:var(--border);
+}
+.htl-dot {
+  width:24px; height:24px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:.6rem; font-weight:800; margin-top:.15rem; position:relative; z-index:1;
+}
+.htl-dot-up    { background:rgba(45,157,120,.18); color:var(--accent);     border:2px solid var(--accent); }
+.htl-dot-down  { background:rgba(192,57,43,.15);  color:var(--red);        border:2px solid var(--red); }
+.htl-dot-eq    { background:var(--bg3);           color:var(--text-muted); border:2px solid var(--border); }
+.htl-dot-first { background:rgba(59,130,246,.15); color:var(--blue);       border:2px solid var(--blue); }
+.htl-body  { flex:1; min-width:0; }
+.htl-fecha { font-family:var(--mono); font-size:.68rem; color:var(--text-muted); }
+.htl-prog  { font-size:.88rem; font-weight:700; margin:.15rem 0 .2rem; display:flex; align-items:center; gap:.45rem; flex-wrap:wrap; }
+.htl-bar-wrap { height:5px; background:var(--bg3); border-radius:99px; overflow:hidden; margin:.15rem 0; max-width:200px; }
+.htl-bar   { height:100%; border-radius:99px; }
+.htl-delta { font-family:var(--mono); font-size:.68rem; font-weight:600; padding:.1rem .35rem; border-radius:99px; }
+.htl-delta-up   { background:rgba(45,157,120,.15); color:var(--accent); }
+.htl-delta-down { background:rgba(192,57,43,.12);  color:var(--red); }
+.htl-delta-eq   { background:var(--bg3); color:var(--text-muted); }
+.hist-kpi-card  { background:var(--bg3); border-radius:8px; padding:.6rem .75rem; text-align:center; }
+.hist-kpi-label { font-size:.63rem; color:var(--text-muted); margin-bottom:.25rem; text-transform:uppercase; letter-spacing:.04em; }
+.hist-kpi-val   { font-size:1.15rem; font-weight:800; font-family:var(--mono); }
+</style>
+
+<script>
+/* ── Modal Historial ───────────────────────────────────────────── */
+function abrirHistorial(alumnoId, nombre) {
+  const modal = document.getElementById('modal-historial');
+  document.getElementById('hist-titulo').textContent     = nombre;
+  document.getElementById('hist-subtitulo').textContent  = 'Cargando…';
+  document.getElementById('hist-loading').style.display  = 'block';
+  document.getElementById('hist-timeline').style.display = 'none';
+  document.getElementById('hist-empty').style.display    = 'none';
+  document.getElementById('hist-kpi').innerHTML          = '';
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  fetch(`/formacion/historial_alumno/${alumnoId}`)
+    .then(r => r.json())
+    .then(data => renderHistorial(data))
+    .catch(() => {
+      document.getElementById('hist-subtitulo').textContent = 'Error al cargar';
+      document.getElementById('hist-loading').style.display = 'none';
+      document.getElementById('hist-empty').style.display   = 'block';
+    });
+}
+
+function cerrarHistorial() {
+  document.getElementById('modal-historial').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.getElementById('modal-historial').addEventListener('click', function(e) {
+  if (e.target === this) cerrarHistorial();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') cerrarHistorial();
+});
+
+function renderHistorial(data) {
+  document.getElementById('hist-loading').style.display = 'none';
+
+  if (!data || data.length === 0) {
+    document.getElementById('hist-subtitulo').textContent = 'Sin importaciones registradas';
+    document.getElementById('hist-empty').style.display = 'block';
+    return;
+  }
+
+  const n          = data.length;
+  const primera    = data[0];
+  const ultima     = data[n - 1];
+  const deltaTotal = +(ultima.progreso - primera.progreso).toFixed(1);
+
+  // Subtítulo
+  document.getElementById('hist-subtitulo').textContent =
+    `${n} importación${n !== 1 ? 'es' : ''} · ${primera.fecha_import} → ${ultima.fecha_import}`;
+
+  // KPI cards
+  const kpiEl   = document.getElementById('hist-kpi');
+  const kpiData = [
+    { label: 'Inicio',       val: primera.progreso + '%', color: 'var(--text-muted)' },
+    { label: 'Actual',       val: ultima.progreso  + '%',
+      color: ultima.progreso >= 75 ? 'var(--accent)' : ultima.progreso >= 50 ? 'var(--amber)' : 'var(--red)' },
+    { label: 'Avance total',
+      val: (deltaTotal >= 0 ? '+' : '') + deltaTotal + '%',
+      color: deltaTotal > 0 ? 'var(--accent)' : deltaTotal < 0 ? 'var(--red)' : 'var(--text-muted)' },
+  ];
+  kpiEl.innerHTML = kpiData.map(k => `
+    <div class="hist-kpi-card">
+      <div class="hist-kpi-label">${k.label}</div>
+      <div class="hist-kpi-val" style="color:${k.color};">${k.val}</div>
+    </div>`).join('');
+
+  // Timeline
+  const tl = document.getElementById('hist-timeline');
+  tl.innerHTML = data.map((item, idx) => {
+    const isFirst = idx === 0;
+    const prog    = +item.progreso;
+    const delta   = +item.delta_progreso;
+    const avanzo  = item.avanzo;
+
+    let dotClass, icon;
+    if (isFirst)            { dotClass = 'htl-dot-first'; icon = '●'; }
+    else if (avanzo ===  1) { dotClass = 'htl-dot-up';    icon = '▲'; }
+    else if (avanzo === -1) { dotClass = 'htl-dot-down';  icon = '▼'; }
+    else                    { dotClass = 'htl-dot-eq';    icon = '='; }
+
+    const barColor = prog >= 75 ? 'var(--accent)'
+                   : prog >= 50 ? 'var(--blue)'
+                   : prog >= 25 ? 'var(--amber)'
+                   : 'var(--red)';
+
+    let deltaHtml;
+    if (isFirst)
+      deltaHtml = `<span class="htl-delta" style="background:rgba(59,130,246,.12);color:var(--blue);">primera</span>`;
+    else if (avanzo ===  1)
+      deltaHtml = `<span class="htl-delta htl-delta-up">+${delta}%</span>`;
+    else if (avanzo === -1)
+      deltaHtml = `<span class="htl-delta htl-delta-down">${delta}%</span>`;
+    else
+      deltaHtml = `<span class="htl-delta htl-delta-eq">sin cambio</span>`;
+
+    const examStr = item.examenes > 0
+      ? `<span style="font-size:.67rem; color:var(--text-muted);">· ${item.examenes} exam${item.examenes !== 1 ? 's' : '.'}</span>`
+      : '';
+
+    const label = isFirst
+      ? 'primera importación'
+      : `importación ${idx + 1}${idx === data.length - 1 ? ' — última' : ''}`;
+
+    return `
+    <div class="htl-item">
+      <div class="htl-dot ${dotClass}">${icon}</div>
+      <div class="htl-body">
+        <div class="htl-fecha">${item.fecha_import} <span style="opacity:.55;">— ${label}</span></div>
+        <div class="htl-prog">
+          <span style="color:${barColor};">${prog}%</span>
+          ${deltaHtml}
+          ${examStr}
+        </div>
+        <div class="htl-bar-wrap">
+          <div class="htl-bar" style="width:${Math.min(prog,100)}%; background:${barColor};"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  tl.style.display = 'block';
+}
+</script>
+
+<!-- ── Modal análisis IA ─────────────────────────────────────────────────── -->
+<div id="modal-ia" style="display:none; position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.55); align-items:center; justify-content:center;">
+  <div style="background:var(--bg2); border-radius:14px; width:min(680px,95vw);
+    max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.4);">
+    <div style="padding:1.25rem 1.4rem .75rem; border-bottom:1px solid var(--border);
+      display:flex; align-items:center; gap:.75rem;">
+      <span style="font-size:1.3rem;">🤖</span>
+      <div style="flex:1;">
+        <div id="modal-ia-titulo" style="font-weight:700;"></div>
+        <div id="modal-ia-subtitulo" style="font-size:.75rem; color:var(--text-muted);"></div>
+      </div>
+      <button onclick="cerrarModalIA()" style="background:none;border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;">✕</button>
+    </div>
+    <div id="modal-ia-body" style="padding:1.25rem 1.4rem;"></div>
+  </div>
+</div>
+
+<script>
+// Delegar click en botones IA de la tabla
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.btn-ia-alumno');
+  if (!btn) return;
+  abrirAnalisisAlumno(btn.dataset.id, btn.dataset.nombre, btn.dataset.curso);
+});
+
+function abrirAnalisisAlumno(id, nombre, curso) {
+  document.getElementById('modal-ia-titulo').textContent    = nombre;
+  document.getElementById('modal-ia-subtitulo').textContent = curso;
+  document.getElementById('modal-ia-body').innerHTML =
+    '<div style="text-align:center;padding:2rem;color:var(--text-muted);">' +
+    '<span style="display:inline-block;animation:spin .8s linear infinite;font-size:1.5rem;">&#8987;</span>' +
+    '<div style="margin-top:.5rem;">Analizando con IA…</div></div>';
+  document.getElementById('modal-ia').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  fetch('/formacion/ia/analizar/' + id)
+    .then(function(r){ return r.json(); })
+    .then(function(d){ renderAnalisisIA(d); })
+    .catch(function(){
+      document.getElementById('modal-ia-body').innerHTML =
+        '<div class="galert galert-danger">Error al conectar con la IA.</div>';
+    });
+}
+
+function renderAnalisisIA(d) {
+  if (d.error) {
+    document.getElementById('modal-ia-body').innerHTML =
+      '<div class="galert galert-danger">' + d.error + '</div>';
+    return;
+  }
+  var rc = {'alto':'var(--red)','medio':'var(--amber)','bajo':'var(--accent)'}[d.riesgo] || 'var(--text-muted)';
+  var rb = {'alto':'rgba(192,57,43,.1)','medio':'rgba(212,160,23,.1)','bajo':'rgba(45,157,120,.1)'}[d.riesgo] || '';
+  var recs = (d.recomendaciones || []).map(function(r){
+    return '<div style="display:flex;gap:.5rem;padding:.35rem 0;font-size:.82rem;border-bottom:1px solid var(--border);">' +
+           '<span style="color:var(--accent);">&#8594;</span>' + r + '</div>';
+  }).join('');
+  var tel   = d.alumno && d.alumno.telefono ? d.alumno.telefono : '';
+  var waMsg = d.mensaje_wa || '';
+  var waBtn = tel
+    ? '<a href="https://wa.me/' + tel.replace(/[^0-9]/g,'') + '?text=' + encodeURIComponent(waMsg) +
+      '" target="_blank" class="btn btn-g-success btn-sm" style="font-size:.75rem;">&#128242; Enviar</a>'
+    : '';
+  var dias  = (d.alumno && d.alumno.dias_restantes != null) ? d.alumno.dias_restantes + ' días' : 'Sin fecha fin';
+  document.getElementById('modal-ia-body').innerHTML =
+    '<div style="background:' + rb + ';border-radius:10px;padding:.75rem 1rem;margin-bottom:1rem;display:flex;gap:.75rem;align-items:center;">' +
+      '<span style="font-size:1.8rem;">' + d.riesgo_emoji + '</span>' +
+      '<div><div style="font-weight:700;color:' + rc + ';">Riesgo ' + (d.riesgo||'').toUpperCase() + '</div>' +
+      '<div style="font-size:.75rem;color:var(--text-muted);">Progreso: ' + (d.alumno&&d.alumno.progreso?d.alumno.progreso.toFixed(1):0) + '% · Exámenes: ' + (d.alumno&&d.alumno.examenes||0) + ' · ' + dias + '</div></div></div>' +
+    '<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">DIAGNÓSTICO</div>' +
+    '<p style="font-size:.84rem;line-height:1.6;margin-bottom:1rem;">' + d.diagnostico + '</p>' +
+    '<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">ACCIONES RECOMENDADAS</div>' +
+    recs +
+    '<div style="background:var(--bg3);border-radius:10px;padding:1rem;margin-top:1rem;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">' +
+        '<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">&#128172; MENSAJE WHATSAPP</div>' +
+        '<div style="display:flex;gap:.4rem;" id="wa-btn-zone">' +
+          '<button id="btn-copiar-wa" class="btn btn-g-ghost btn-sm" style="font-size:.72rem;">&#128203; Copiar</button>' +
+          waBtn +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:.82rem;line-height:1.6;" id="wa-msg-text">' + waMsg.replace(/\n/g,'<br>') + '</div>' +
+    '</div>';
+
+  // Copiar mensaje
+  document.getElementById('btn-copiar-wa').onclick = function() {
+    navigator.clipboard.writeText(waMsg);
+    this.textContent = '&#10003; Copiado';
+    var self = this;
+    setTimeout(function(){ self.innerHTML = '&#128203; Copiar'; }, 2000);
+  };
+}
+
+function cerrarModalIA() {
+  document.getElementById('modal-ia').style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.getElementById('modal-ia').addEventListener('click', function(e) {
+  if (e.target === this) cerrarModalIA();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') cerrarModalIA();
+});
+</script>
+
+{% endblock %}

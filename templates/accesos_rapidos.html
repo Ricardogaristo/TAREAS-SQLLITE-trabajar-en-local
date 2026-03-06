@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+{% block title %}Accesos Rápidos — Grupo Método{% endblock %}
+
+{% block content %}
+
+<style>
+  .page-intro { margin-bottom: 2rem; }
+  .page-intro h4 { font-weight: 700; margin: 0 0 .25rem; }
+  .page-intro p  { font-size: .88rem; color: var(--text-muted); margin: 0; }
+  .intro-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: .68rem;
+    padding: .18rem .55rem;
+    background: var(--accent-dim, #1a4a24);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    color: var(--accent);
+    margin-bottom: .6rem;
+    letter-spacing: .07em;
+  }
+
+  /* Search */
+  .acc-search { position: relative; max-width: 420px; margin-bottom: 2rem; }
+  .acc-search .ico {
+    position: absolute; left: .85rem; top: 50%; transform: translateY(-50%);
+    color: var(--text-dim); pointer-events: none;
+  }
+  .acc-search input { padding-left: 2.3rem; }
+
+  /* Section */
+  .acc-section { margin-bottom: 2.25rem; }
+  .acc-section-header {
+    display: flex; align-items: center; gap: .6rem;
+    margin-bottom: .9rem;
+    padding-bottom: .6rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .acc-section-icon {
+    width: 26px; height: 26px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem; flex-shrink: 0;
+  }
+  .acc-section-title {
+    font-family: var(--mono);
+    font-size: .7rem; font-weight: 500;
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .acc-section-count {
+    margin-left: auto;
+    font-family: var(--mono); font-size: .67rem;
+    color: var(--text-dim);
+    background: var(--bg3);
+    border: 1px solid var(--border-soft);
+    border-radius: 20px; padding: .13rem .5rem;
+  }
+
+  /* Cards grid */
+  .acc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: .75rem;
+  }
+  .acc-grid.hero {
+    grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+  }
+
+  /* Card */
+  .acc-card {
+    display: flex; flex-direction: column;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    text-decoration: none; color: var(--text);
+    transition: border-color .18s, transform .18s, box-shadow .18s;
+    position: relative; overflow: hidden;
+  }
+  .acc-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--ca, var(--accent));
+    transform: scaleX(0); transform-origin: left;
+    transition: transform .18s;
+  }
+  .acc-card:hover {
+    border-color: var(--ca, var(--accent));
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,.3);
+    color: var(--text); text-decoration: none;
+  }
+  .acc-card:hover::before { transform: scaleX(1); }
+  .acc-card:active { transform: translateY(0); }
+
+  .acc-card-icon { font-size: 1.35rem; margin-bottom: .6rem; line-height: 1; }
+  .acc-card-name { font-size: .87rem; font-weight: 600; line-height: 1.3; margin-bottom: .3rem; }
+  .acc-card-sub  {
+    font-family: var(--mono); font-size: .67rem;
+    color: var(--text-dim); margin-top: auto; padding-top: .45rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .acc-card-arrow {
+    position: absolute; bottom: .8rem; right: .85rem;
+    font-size: .72rem; color: var(--text-dim);
+    transition: color .18s, transform .18s;
+  }
+  .acc-card:hover .acc-card-arrow { color: var(--ca, var(--accent)); transform: translate(2px,-2px); }
+
+  .acc-card.hero { padding: 1.2rem 1.2rem .95rem; border-radius: 13px; }
+  .acc-card.hero .acc-card-icon { font-size: 1.7rem; }
+  .acc-card.hero .acc-card-name { font-size: .95rem; font-weight: 700; }
+
+  /* Color vars */
+  .c-green  { --ca: var(--accent); }
+  .c-amber  { --ca: var(--amber); }
+  .c-blue   { --ca: var(--blue); }
+  .c-purple { --ca: #bc8cff; }
+  .c-teal   { --ca: #39d3bb; }
+  .c-red    { --ca: var(--red); }
+
+  /* No results */
+  #acc-no-results {
+    display: none; text-align: center;
+    padding: 3rem 1rem; color: var(--text-muted); font-size: .9rem;
+  }
+  #acc-no-results .big { font-size: 2rem; margin-bottom: .5rem; }
+</style>
+
+<!-- Intro -->
+<div class="page-intro">
+  <div class="intro-tag">PANEL INTERNO</div>
+  <h4>Accesos Rápidos</h4>
+  <p>Todos los recursos del equipo en un solo lugar.</p>
+</div>
+
+<!-- Search -->
+<div class="acc-search">
+  <span class="ico">🔍</span>
+  <input type="text" id="acc-buscador" class="form-control" placeholder="Buscar recurso…" autocomplete="off">
+</div>
+
+<div id="acc-sections">
+
+  <!-- ══ SISTEMAS & GESTIÓN ══ -->
+  <div class="acc-section" data-acc-section>
+    <div class="acc-section-header">
+      <div class="acc-section-icon" style="background:rgba(63,185,80,.1);">⚙</div>
+      <span class="acc-section-title">Sistemas & Gestión</span>
+      <span class="acc-section-count">4</span>
+    </div>
+    <div class="acc-grid hero">
+
+      <a class="acc-card hero c-green"
+         href="https://metodo.gestemapp.com/usuarios/fichar/"
+         target="_blank" rel="noopener"
+         data-acc="fichar fichaje gestemapp tiempo">
+        <div class="acc-card-icon">🕐</div>
+        <div class="acc-card-name">FICHAR</div>
+        <div class="acc-card-sub">metodo.gestemapp.com</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card hero c-amber"
+         href="https://metodo.gestemapp.com/sistema"
+         target="_blank" rel="noopener"
+         data-acc="gestión sistema administración gestemapp">
+        <div class="acc-card-icon">🖥</div>
+        <div class="acc-card-name">GESTIÓN</div>
+        <div class="acc-card-sub">metodo.gestemapp.com</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card hero c-red"
+         href="https://drive.google.com/drive/u/0/folders/1KeI1h8POZyARJT5w2q2_OOPKtZdrqhES"
+         target="_blank" rel="noopener"
+         data-acc="Certificados Digitales">
+        <div class="acc-card-icon">🖥</div>
+        <div class="acc-card-name">Certificados Digitales</div>
+        <div class="acc-card-sub">Instalación Certificados Digitales</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card hero c-red"
+         href="https://accounts.google.com/v3/signin/challenge/pwd?TL=AHU8sQu1rOMTin3Lyr874cXhKFMW5VtkBN4SBOMYzx5CbOJsNSxob6jm6wS-IWkL&authuser=0&cid=4&continue=https%3A%2F%2Fadmin.google.com%2Fac%2Fhome%3Fhl%3Des&dsh=S620795571%3A1772199391583976&flowName=GlifWebSignIn&ifkv=ASfE1-peDMnzMMZXg5fCCU4zJ6HXwK8rCYU9ocXZc4ReYWuUdjZ6ACJz1dOB67OFPerq1POqmua-fQ&osid=1&rart=ANgoxcfKlPQYIY8mzMfiB620bs2o0Wk4zxPEJYPw8zguRqeh1akzqhpEAG9sbPhXU5xpSZ_R0DLOc-rR7ZEoQ_QW5GAYM25BQLWIQfTALcJwzGO5xWv9yWs&rpbg=1&sarp=1"
+         target="_blank" rel="noopener"
+         data-acc="Altas Correos Gmail">
+        <div class="acc-card-icon">🖥</div>
+        <div class="acc-card-name">Altas Correos Gmail</div>
+        <div class="acc-card-sub">Altas Correos Gmail</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ══ COMUNICACIÓN & FORMACIÓN ══ -->
+  <div class="acc-section" data-acc-section>
+    <div class="acc-section-header">
+      <div class="acc-section-icon" style="background:rgba(88,166,255,.1);">💬</div>
+      <span class="acc-section-title">Comunicación & Formación</span>
+      <span class="acc-section-count">2</span>
+    </div>
+    <div class="acc-grid hero">
+
+      <a class="acc-card hero c-blue"
+         href="https://chat.aitire.cloud/metodogrupo/channels/metodo"
+         target="_blank" rel="noopener"
+         data-acc="aitire chat mensajes equipo comunicación">
+        <div class="acc-card-icon">💬</div>
+        <div class="acc-card-name">AITIRE</div>
+        <div class="acc-card-sub">chat.aitire.cloud</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card hero c-purple"
+         href="https://aulas.metodogrupo.com/login"
+         target="_blank" rel="noopener"
+         data-acc="aulas formación cursos plataforma metodogrupo">
+        <div class="acc-card-icon">🎓</div>
+        <div class="acc-card-name">AULAS</div>
+        <div class="acc-card-sub">aulas.metodogrupo.com</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card hero c-purple"
+         href="https://claude.ai/chat/2634b61c-0cfc-4606-8fe3-a45eacc2e10d"
+         target="_blank" rel="noopener"
+         data-acc="CLAUDE">
+        <div class="acc-card-icon">🎓</div>
+        <div class="acc-card-name">CLAUDE</div>
+        <div class="acc-card-sub">Claude Consulta</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- ══ HOJAS DE CÁLCULO ══ -->
+  <div class="acc-section" data-acc-section>
+    <div class="acc-section-header">
+      <div class="acc-section-icon" style="background:rgba(57,211,187,.1);">📊</div>
+      <span class="acc-section-title">Hojas de Cálculo</span>
+      <span class="acc-section-count">12</span>
+    </div>
+    <div class="acc-grid">
+
+      <a class="acc-card c-teal"
+         href="https://docs.google.com/spreadsheets/d/1yb5BiLrUXPdS-JuPuA2houA1xEsd79UmoXi00uoFQHs/edit?pli=1&gid=0#gid=0"
+         target="_blank" rel="noopener"
+         data-acc="voip planeta voz grupo método extensiones teléfono 2025">
+        <div class="acc-card-icon">📞</div>
+        <div class="acc-card-name">VoIP Planeta Voz<br><small style="font-weight:400;">Grupo Método 2025</small></div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-teal"
+         href="https://docs.google.com/spreadsheets/d/1asnv73wz4buPENPrZguOlNmFffR-5l1OxJ1ICCuHRjU/edit?pli=1&gid=1636586833#gid=1636586833"
+         target="_blank" rel="noopener"
+         data-acc="f24 plataformas 2024">
+        <div class="acc-card-icon">🗂</div>
+        <div class="acc-card-name">F24_PLATAFORMAS</div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-teal"
+         href="https://docs.google.com/spreadsheets/d/15g9wzNYM1IlDW-vGs21se_WbMqqQYLr2x9nsTGJlu4I/edit?pli=1&gid=1094197693#gid=1094197693"
+         target="_blank" rel="noopener"
+         data-acc="cursos entregados 2024 pedagogía formación">
+        <div class="acc-card-icon">📚</div>
+        <div class="acc-card-name">Cursos Entregados 2024<br><small style="font-weight:400;">Pedagogía</small></div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-blue"
+         href="https://docs.google.com/spreadsheets/d/1hmaasYbd_XVq_9JxmI5BJ-UUMcwtcuaij-DlQVwptOk/edit?pli=1&gid=0#gid=0"
+         target="_blank" rel="noopener"
+         data-acc="encuestas 2024 satisfacción">
+        <div class="acc-card-icon">📋</div>
+        <div class="acc-card-name">Encuestas 2024</div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-amber"
+         href="https://docs.google.com/spreadsheets/d/1a3EArLH__jnY6M0YsJAmQ8hy68qxiEzjd2uIpCMvm-Q/edit?pli=1&gid=748994722#gid=748994722"
+         target="_blank" rel="noopener"
+         data-acc="licencias clientes 2025 software">
+        <div class="acc-card-icon">🔑</div>
+        <div class="acc-card-name">Licencias Clientes 2025</div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-amber"
+         href="https://docs.google.com/spreadsheets/d/1keK7sbKviohEsrxLyYwxbdv-4w-lHR2bShP2bbLkNaI/edit?pli=1&gid=946452395#gid=946452395"
+         target="_blank" rel="noopener"
+         data-acc="soap aulas 2025 sistema">
+        <div class="acc-card-icon">🧾</div>
+        <div class="acc-card-name">SOAP AULAS 2025</div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-amber"
+         href="https://docs.google.com/spreadsheets/d/1a3EArLH__jnY6M0YsJAmQ8hy68qxiEzjd2uIpCMvm-Q/edit?pli=1&gid=722431308#gid=722431308"
+         target="_blank" rel="noopener"
+         data-acc="licencias 2025 clientes hoja 2">
+        <div class="acc-card-icon">📄</div>
+        <div class="acc-card-name">_Licencias 2025 CLIENTES<br><small style="font-weight:400;">Vista 2</small></div>
+        <div class="acc-card-sub">Google Sheets · hoja 2</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-green"
+         href="https://docs.google.com/spreadsheets/d/13NZEwWOZ8O8ZFa4JQXnlwqJTebhbIEDDvp_bzBAsi0U/edit?pli=1&gid=0#gid=0"
+         target="_blank" rel="noopener"
+         data-acc="cursos entregados 2025 formación">
+        <div class="acc-card-icon">🏫</div>
+        <div class="acc-card-name">Cursos Entregados 2025</div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-green"
+         href="https://docs.google.com/spreadsheets/d/13NZEwWOZ8O8ZFa4JQXnlwqJTebhbIEDDvp_bzBAsi0U/edit?pli=1&gid=1545907025#gid=1545907025"
+         target="_blank" rel="noopener"
+         data-acc="cursos entregados 2025 vista alternativa hoja 2">
+        <div class="acc-card-icon">🏫</div>
+        <div class="acc-card-name">Cursos Entregados 2025<br><small style="font-weight:400;">Vista alternativa</small></div>
+        <div class="acc-card-sub">Google Sheets · hoja 2</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-red"
+         href="https://docs.google.com/spreadsheets/d/1Tdu-Tc9SPcXY46U65Cl5ULb_mV_GOTW80bs1zFmU-5o/edit?gid=832138303#gid=832138303"
+         target="_blank" rel="noopener"
+         data-acc="inventario equipos 2026 hardware informática">
+        <div class="acc-card-icon">🖥</div>
+        <div class="acc-card-name">Inventario Equipos 2026</div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-red"
+         href="https://docs.google.com/spreadsheets/d/1jXlj1UvqPZAXeG3-EjJel5M53-AQS26CszIZm-aPiJ4/edit?gid=0#gid=0"
+         target="_blank" rel="noopener"
+         data-acc="Certificados Digitales Excel">
+        <div class="acc-card-icon">📄</div>
+        <div class="acc-card-name">Certificados Digitales Excel</div>
+        <div class="acc-card-sub">Google Sheets</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+
+      <a class="acc-card c-red"
+         href="https://docs.google.com/spreadsheets/d/16rzhGef5kLqeJBI4xzSN5BeRUzUTD4eB4XucQOA3oLg/edit?gid=0#gid=0"
+         target="_blank" rel="noopener"
+         data-acc="SQL Sentencias">
+        <div class="acc-card-icon">🖥</div>
+        <div class="acc-card-name">Sentencia MySQL</div>
+        <div class="acc-card-sub">Sentencia MySQL</div>
+        <span class="acc-card-arrow">↗</span>
+      </a>
+  
+    </div>
+  </div>
+
+</div><!-- /acc-sections -->
+
+<div id="acc-no-results">
+  <div class="big">🔍</div>
+  Ningún recurso coincide con la búsqueda.
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('acc-buscador').addEventListener('input', function(){
+    const q = this.value.toLowerCase().trim();
+    const cards = document.querySelectorAll('.acc-card');
+    let any = false;
+
+    cards.forEach(c => {
+      const txt = (c.dataset.acc + ' ' + c.textContent).toLowerCase();
+      const show = !q || txt.includes(q);
+      c.style.display = show ? '' : 'none';
+      if(show) any = true;
+    });
+
+    // Hide sections with no visible cards
+    document.querySelectorAll('[data-acc-section]').forEach(sec => {
+      const hasVisible = [...sec.querySelectorAll('.acc-card')].some(c => c.style.display !== 'none');
+      sec.style.display = hasVisible ? '' : 'none';
+    });
+
+    document.getElementById('acc-no-results').style.display = (!any && q) ? '' : 'none';
+  });
+</script>
+{% endblock %}

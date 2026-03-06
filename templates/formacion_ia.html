@@ -1,0 +1,929 @@
+{% extends "base.html" %}
+{% block title %}IA Formación{% endblock %}
+
+{% block content %}
+
+<!-- HEADER -->
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <h4 style="font-weight:700; margin:0;">🤖 Asistente IA</h4>
+    <div style="font-family:var(--mono); font-size:.75rem; color:var(--text-muted); margin-top:.2rem;">
+      Powered by Groq · Llama 3.3 70B
+    </div>
+  </div>
+  <a href="{{ url_for('formacion.formacion') }}" class="btn btn-g-ghost">← Volver</a>
+</div>
+
+<!-- TABS -->
+<div class="ia-tabs">
+  <button class="ia-tab active" onclick="cambiarTab('telefonos', this)">📱 Teléfonos</button>
+  <button class="ia-tab" onclick="cambiarTab('mensajes', this)">💬 Mensajes WA</button>
+  <button class="ia-tab" onclick="cambiarTab('curso', this)">🔍 Análisis de curso</button>
+  <button class="ia-tab" onclick="cambiarTab('chatbot', this)">🤖 Chatbot</button>
+  <button class="ia-tab" onclick="cambiarTab('moodle', this)">🎓 Moodle</button>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 1: IMPORTAR TELÉFONOS                 -->
+<!-- ══════════════════════════════════════════ -->
+<div id="tab-telefonos" class="ia-panel">
+  <div class="gcard">
+    <div class="gcard-header">
+      <span>📱</span>
+      <span class="gcard-title">Importar teléfonos desde Excel</span>
+    </div>
+    <div class="gcard-body">
+      <p style="font-size:.85rem; color:var(--text-muted); margin-bottom:1rem;">
+        Sube un Excel con dos columnas: <strong>Nombre</strong> y <strong>Teléfono</strong>.
+        El sistema cruza automáticamente con tus alumnos y rellena los números que faltan.
+      </p>
+
+      <div style="display:flex; gap:.75rem; align-items:center; margin-bottom:1rem;">
+        <input type="file" id="input-tel-excel" accept=".xlsx,.xls"
+               class="form-control" style="flex:1;">
+        <button onclick="importarTelefonos()" class="btn btn-g-primary" style="white-space:nowrap;">
+          📲 Importar
+        </button>
+      </div>
+
+      <div id="tel-loading" style="display:none; text-align:center; padding:1.5rem; color:var(--text-muted);">
+        <span style="display:inline-block; animation:spin .8s linear infinite;">⟳</span> Procesando…
+      </div>
+      <div id="tel-resultado" style="display:none;"></div>
+
+      <div style="padding:.75rem 1rem; background:var(--bg3); border-radius:8px; font-size:.8rem; color:var(--text-muted);">
+        💡 Formato requerido — fila 1 con cabeceras:
+        <span style="font-family:var(--mono); color:var(--blue);">Nombre</span> |
+        <span style="font-family:var(--mono); color:var(--blue);">Teléfono</span>
+        (formato: +34612345678)
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 2: MENSAJES WHATSAPP MASIVOS          -->
+<!-- ══════════════════════════════════════════ -->
+<div id="tab-mensajes" class="ia-panel" style="display:none;">
+  <div class="gcard">
+    <div class="gcard-header">
+      <span>💬</span>
+      <span class="gcard-title">Mensajes WhatsApp masivos</span>
+    </div>
+    <div class="gcard-body">
+      <p style="font-size:.85rem; color:var(--text-muted); margin-bottom:1rem;">
+        Genera mensajes personalizados con IA para un grupo de alumnos de una sola vez.
+      </p>
+
+      <div style="display:flex; gap:.75rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap;">
+        <select id="sel-filtro-wa" class="form-select" style="flex:1; min-width:200px;">
+          <option value="en_riesgo">⚠ Alumnos en riesgo (≤30 días o &lt;50% progreso)</option>
+          <option value="sin_aprobar">● Todos sin aprobar (con teléfono)</option>
+          <option value="todos">👥 Todos los alumnos (con teléfono)</option>
+        </select>
+        <button onclick="generarMensajesMasivos()" class="btn btn-g-primary" style="white-space:nowrap;">
+          ✨ Generar mensajes
+        </button>
+      </div>
+
+      <div id="wa-loading" style="display:none; text-align:center; padding:2rem; color:var(--text-muted);">
+        <span style="display:inline-block; animation:spin .8s linear infinite; font-size:1.2rem;">⟳</span>
+        <div style="margin-top:.5rem; font-size:.83rem;">Generando mensajes con IA…</div>
+      </div>
+      <div id="wa-resultado" style="display:none; max-height:500px; overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 3: ANÁLISIS DE CURSO                  -->
+<!-- ══════════════════════════════════════════ -->
+<div id="tab-curso" class="ia-panel" style="display:none;">
+  <div class="gcard">
+    <div class="gcard-header">
+      <span>🔍</span>
+      <span class="gcard-title">Análisis de curso</span>
+    </div>
+    <div class="gcard-body">
+      <p style="font-size:.85rem; color:var(--text-muted); margin-bottom:1rem;">
+        Selecciona un curso para que la IA analice su estado, detecte alumnos críticos
+        y te dé recomendaciones concretas.
+      </p>
+
+      <div style="display:flex; gap:.75rem; margin-bottom:1rem;">
+        <select id="sel-curso-ia" class="form-select">
+          <option value="">— Selecciona un curso —</option>
+          {% for c in cursos %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+        <button onclick="analizarCurso()" class="btn btn-g-primary" style="white-space:nowrap;">
+          Analizar
+        </button>
+      </div>
+
+      <div id="curso-loading" style="display:none; text-align:center; padding:2rem; color:var(--text-muted);">
+        <span style="display:inline-block; animation:spin .8s linear infinite; font-size:1.2rem;">⟳</span>
+        <div style="margin-top:.5rem; font-size:.83rem;">Analizando con IA…</div>
+      </div>
+      <div id="resultado-curso" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 4: CHATBOT                            -->
+<!-- ══════════════════════════════════════════ -->
+<div id="tab-chatbot" class="ia-panel" style="display:none;">
+  <div class="gcard">
+    <div class="gcard-header">
+      <span>🤖</span>
+      <span class="gcard-title">Chatbot del tutor</span>
+      <button onclick="limpiarChat()" class="btn btn-g-ghost btn-sm ms-auto">🗑 Nueva conversación</button>
+    </div>
+    <div class="gcard-body" style="padding:0;">
+
+      <!-- Sugerencias rápidas -->
+      <div style="padding:.75rem 1rem .5rem; display:flex; gap:.4rem; flex-wrap:wrap; border-bottom:1px solid var(--border);">
+        <span style="font-size:.72rem; color:var(--text-muted); align-self:center; flex-shrink:0;">Preguntas:</span>
+        {% for s in ["¿Qué cursos estoy tutorizando?", "¿Quiénes están en riesgo?", "¿Alumnos sin teléfono?", "¿Cuántos superan el 75%?", "¿Qué curso va peor?", "Lista alumnos de un curso"] %}
+        <button onclick="enviarSugerencia(this)" class="chip-sug">{{ s }}</button>
+        {% endfor %}
+        {% if cursos %}
+        <div style="width:100%; margin-top:.3rem; display:flex; gap:.4rem; flex-wrap:wrap; padding-top:.3rem; border-top:1px solid var(--border);">
+          <span style="font-size:.7rem; color:var(--text-muted); align-self:center; flex-shrink:0;">Por curso:</span>
+          {% for c in cursos %}
+          <button onclick="enviarSugerencia(this)" class="chip-sug" style="font-size:.68rem;">{{ c }}</button>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Mensajes -->
+      <div id="chat-mensajes" style="height:380px; overflow-y:auto; padding:1rem;
+           display:flex; flex-direction:column; gap:.75rem;">
+        <div class="msg-ia">
+          <div class="msg-burbuja msg-ia-burbuja">
+            👋 Hola, soy tu asistente de formación. Tengo acceso a todos tus alumnos en tiempo real. ¿En qué te ayudo?
+          </div>
+        </div>
+      </div>
+
+      <!-- Input -->
+      <div style="padding:.75rem 1rem; border-top:1px solid var(--border); display:flex; gap:.5rem;">
+        <input type="text" id="chat-input" class="form-control"
+               placeholder="Escribe tu pregunta…"
+               onkeydown="if(event.key==='Enter') enviarChat()">
+        <button onclick="enviarChat()" id="btn-chat" class="btn btn-g-primary" style="white-space:nowrap;">
+          Enviar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TAB 5: MOODLE MENSAJES                    -->
+<!-- ══════════════════════════════════════════ -->
+<div id="tab-moodle" class="ia-panel" style="display:none;">
+
+  <!-- Config -->
+  <div class="gcard" style="margin-bottom:1rem;">
+    <div class="gcard-header">
+      <span>🎓</span>
+      <span class="gcard-title">Conexión con Moodle</span>
+      <button onclick="toggleMoodleConfig()" id="btn-moodle-config"
+              class="btn btn-g-ghost btn-sm ms-auto" style="font-size:.75rem;">⚙ Configurar</button>
+    </div>
+    <div id="moodle-config-panel" style="display:none;" class="gcard-body">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.75rem;">
+        <div>
+          <label style="font-size:.75rem; color:var(--text-muted); display:block; margin-bottom:.3rem;">URL Moodle</label>
+          <input type="text" id="moodle-url" class="form-control" placeholder="https://cursos.metodogrupo.com"
+                 value="https://cursos.metodogrupo.com">
+        </div>
+        <div>
+          <label style="font-size:.75rem; color:var(--text-muted); display:block; margin-bottom:.3rem;">Token de acceso</label>
+          <input type="password" id="moodle-token" class="form-control" placeholder="tu_token_moodle">
+        </div>
+        <div>
+          <label style="font-size:.75rem; color:var(--text-muted); display:block; margin-bottom:.3rem;">URL o ID del curso</label>
+          <input type="text" id="moodle-curso-url" class="form-control"
+                 placeholder="https://cursos.metodogrupo.com/course/view.php?id=5785">
+        </div>
+        <div>
+          <label style="font-size:.75rem; color:var(--text-muted); display:block; margin-bottom:.3rem;">Tipo de mensajes a cargar</label>
+          <select id="moodle-tipo" class="form-select">
+            <option value="ambos">📋 Foros + Mensajes privados</option>
+            <option value="foros">💬 Solo foros</option>
+            <option value="privados">✉ Solo mensajes privados</option>
+          </select>
+        </div>
+      </div>
+      <div style="padding:.65rem .9rem; background:var(--bg3); border-radius:8px; font-size:.78rem; color:var(--text-muted); margin-bottom:.75rem;">
+        💡 Obtén el token en Moodle → Administración → Seguridad → Claves de API web.
+        Necesitas activar el servicio REST y el plugin <strong>webservice</strong>.
+      </div>
+      <button onclick="guardarConfigMoodle()" class="btn btn-g-primary btn-sm">💾 Guardar configuración</button>
+    </div>
+
+    <!-- Barra de carga -->
+    <div class="gcard-body" style="padding-top:.5rem; border-top:1px solid var(--border);">
+      <div style="display:flex; gap:.75rem; align-items:center; flex-wrap:wrap;">
+        <div id="moodle-status-badge" style="font-size:.78rem; color:var(--text-muted);">
+          Sin configurar
+        </div>
+        <button onclick="cargarMensajesMoodle()" class="btn btn-g-primary ms-auto" style="white-space:nowrap;">
+          🔄 Cargar mensajes
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="moodle-loading" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
+    <span style="display:inline-block; animation:spin .8s linear infinite; font-size:1.4rem;">⟳</span>
+    <div style="margin-top:.6rem; font-size:.83rem;">Conectando con Moodle y cargando mensajes…</div>
+  </div>
+
+  <!-- Resultados -->
+  <div id="moodle-resultado" style="display:none;">
+
+    <!-- Sub-tabs -->
+    <div style="display:flex; gap:.5rem; margin-bottom:1rem; border-bottom:2px solid var(--border); padding-bottom:0;">
+      <button id="subtab-btn-foros" onclick="cambiarSubtabMoodle('foros')"
+              style="background:none; border:none; border-bottom:2px solid var(--accent);
+                     margin-bottom:-2px; padding:.4rem .9rem; font-size:.83rem; font-weight:600;
+                     color:var(--accent); cursor:pointer; border-radius:6px 6px 0 0;">
+        💬 Foros <span id="badge-foros" class="moodle-badge">0</span>
+      </button>
+      <button id="subtab-btn-privados" onclick="cambiarSubtabMoodle('privados')"
+              style="background:none; border:none; border-bottom:2px solid transparent;
+                     margin-bottom:-2px; padding:.4rem .9rem; font-size:.83rem; font-weight:600;
+                     color:var(--text-muted); cursor:pointer; border-radius:6px 6px 0 0;">
+        ✉ Mensajes privados <span id="badge-privados" class="moodle-badge">0</span>
+      </button>
+    </div>
+
+    <!-- Foros -->
+    <div id="subtab-foros">
+      <div id="moodle-foros-lista"></div>
+    </div>
+
+    <!-- Privados -->
+    <div id="subtab-privados" style="display:none;">
+      <div id="moodle-privados-lista"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL ANÁLISIS ALUMNO (accesible desde ranking en lista) -->
+<div id="modal-ia" style="display:none; position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.55); align-items:center; justify-content:center;">
+  <div style="background:var(--bg2); border-radius:14px; width:min(680px,95vw);
+    max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.4);">
+    <div style="padding:1.25rem 1.4rem .75rem; border-bottom:1px solid var(--border);
+      display:flex; align-items:center; gap:.75rem;">
+      <span style="font-size:1.3rem;">🤖</span>
+      <div style="flex:1;">
+        <div id="modal-ia-titulo" style="font-weight:700;"></div>
+        <div id="modal-ia-subtitulo" style="font-size:.75rem; color:var(--text-muted);"></div>
+      </div>
+      <button onclick="cerrarModalIA()"
+              style="background:none;border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;">✕</button>
+    </div>
+    <div id="modal-ia-body" style="padding:1.25rem 1.4rem;"></div>
+  </div>
+</div>
+
+
+<style>
+/* ── Tabs ───────────────────────────────────────────────────── */
+.ia-tabs {
+  display: flex;
+  gap: .35rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+  flex-wrap: wrap;
+}
+.ia-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: .55rem 1rem;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all .15s;
+  border-radius: 6px 6px 0 0;
+}
+.ia-tab:hover  { color: var(--text); background: var(--bg3); }
+.ia-tab.active { color: var(--accent); border-bottom-color: var(--accent); background: none; }
+
+/* ── Chat ───────────────────────────────────────────────────── */
+.chip-sug {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 99px;
+  padding: .2rem .65rem; font-size: .72rem; color: var(--text-muted);
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.chip-sug:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.msg-ia    { display: flex; }
+.msg-tutor { display: flex; justify-content: flex-end; }
+.msg-burbuja {
+  max-width: 82%; padding: .6rem .9rem; border-radius: 14px;
+  font-size: .84rem; line-height: 1.55; white-space: pre-wrap;
+}
+.msg-ia-burbuja    { background: var(--bg3); color: var(--text); border-bottom-left-radius: 4px; }
+.msg-tutor-burbuja { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+
+/* ── WA cards ───────────────────────────────────────────────── */
+.wa-card {
+  background: var(--bg3); border-radius: 10px; padding: .85rem 1rem;
+  margin-bottom: .6rem; border-left: 3px solid var(--accent);
+}
+.wa-card-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .5rem; flex-wrap: wrap; }
+.wa-card-nombre { font-weight: 700; font-size: .88rem; }
+.wa-card-curso  { font-size: .75rem; color: var(--text-muted); }
+.wa-card-msg    { font-size: .82rem; line-height: 1.55; white-space: pre-wrap; }
+
+/* ── Análisis ───────────────────────────────────────────────── */
+.ia-rec-item {
+  display: flex; gap: .5rem; align-items: flex-start;
+  padding: .4rem 0; font-size: .82rem; border-bottom: 1px solid var(--border);
+}
+.ia-rec-item:last-child { border-bottom: none; }
+
+/* ── Moodle ──────────────────────────────────────────────── */
+.moodle-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  font-size: .65rem; font-weight: 700; min-width: 18px; height: 18px;
+  border-radius: 99px; padding: 0 .35rem; margin-left: .35rem;
+}
+.moodle-msg-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: .85rem; overflow: hidden;
+}
+.moodle-msg-header {
+  display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem;
+  background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+}
+.moodle-msg-autor   { font-weight: 700; font-size: .85rem; }
+.moodle-msg-meta    { font-size: .73rem; color: var(--text-muted); }
+.moodle-msg-asunto  { font-size: .78rem; color: var(--blue); margin-left: auto; }
+.moodle-msg-body    {
+  padding: .75rem 1rem; font-size: .83rem; line-height: 1.6;
+  color: var(--text); max-height: 160px; overflow-y: auto;
+  border-bottom: 1px solid var(--border);
+}
+.moodle-msg-footer  { padding: .6rem 1rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.moodle-respuesta   {
+  margin: .75rem 1rem; padding: .85rem 1rem; background: var(--bg3);
+  border-radius: 8px; border-left: 3px solid var(--accent);
+  font-size: .82rem; line-height: 1.6; white-space: pre-wrap;
+  display: none;
+}
+.moodle-tipo-foro   { border-left: 3px solid var(--blue); }
+.moodle-tipo-priv   { border-left: 3px solid var(--accent); }
+.moodle-empty {
+  text-align: center; padding: 2.5rem; color: var(--text-muted);
+  background: var(--bg3); border-radius: 10px; font-size: .84rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+
+<script>
+// ── TABS ──────────────────────────────────────────────────────
+function cambiarTab(nombre, btn) {
+  document.querySelectorAll(".ia-panel").forEach(p => p.style.display = "none");
+  document.querySelectorAll(".ia-tab").forEach(b => b.classList.remove("active"));
+  document.getElementById("tab-" + nombre).style.display = "block";
+  btn.classList.add("active");
+}
+
+// ── IMPORTAR TELÉFONOS ────────────────────────────────────────
+async function importarTelefonos() {
+  const input = document.getElementById("input-tel-excel");
+  if (!input.files.length) { alert("Selecciona un archivo Excel primero."); return; }
+
+  const fd = new FormData();
+  fd.append("excel_tel", input.files[0]);
+
+  document.getElementById("tel-loading").style.display   = "block";
+  document.getElementById("tel-resultado").style.display = "none";
+
+  try {
+    const r    = await fetch("/formacion/importar_telefonos", { method: "POST", body: fd });
+    const data = await r.json();
+    document.getElementById("tel-loading").style.display = "none";
+
+    if (data.error) {
+      document.getElementById("tel-resultado").innerHTML =
+        `<div class="galert galert-danger">${data.error}</div>`;
+    } else {
+      const noEnc = data.no_encontrados && data.no_encontrados.length
+        ? `<div style="margin-top:.4rem; font-size:.75rem; color:var(--text-muted);">
+             No cruzados: ${data.no_encontrados.slice(0,5).join(", ")}${data.no_encontrados.length > 5 ? "…" : ""}
+           </div>` : "";
+      document.getElementById("tel-resultado").innerHTML =
+        `<div class="galert galert-success" style="margin-bottom:0;">
+           ✅ <strong>${data.actualizados}</strong> teléfonos actualizados de ${data.total_excel} en el Excel.
+           ${noEnc}
+           <div style="margin-top:.5rem; font-size:.75rem; opacity:.8;">Redirigiendo a la lista de alumnos…</div>
+         </div>`;
+      setTimeout(() => { window.location.href = "/formacion"; }, 2000);
+    }
+    document.getElementById("tel-resultado").style.display = "block";
+  } catch(e) {
+    document.getElementById("tel-loading").style.display  = "none";
+    document.getElementById("tel-resultado").innerHTML    =
+      `<div class="galert galert-danger">Error al procesar el archivo.</div>`;
+    document.getElementById("tel-resultado").style.display = "block";
+  }
+}
+
+// ── MENSAJES WA MASIVOS ───────────────────────────────────────
+async function generarMensajesMasivos() {
+  const filtro = document.getElementById("sel-filtro-wa").value;
+  document.getElementById("wa-loading").style.display   = "block";
+  document.getElementById("wa-resultado").style.display = "none";
+
+  try {
+    const r    = await fetch("/formacion/ia/mensajes_masivos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filtro })
+    });
+    const data = await r.json();
+    document.getElementById("wa-loading").style.display = "none";
+
+    if (!data.length) {
+      document.getElementById("wa-resultado").innerHTML =
+        `<div class="galert galert-warning">
+           No hay alumnos que cumplan el filtro seleccionado o no tienen teléfono registrado.
+         </div>`;
+    } else {
+      const cards = data.map(m => {
+        const waBtn = m.wa_link
+          ? `<a href="${m.wa_link}" target="_blank"
+               class="btn btn-g-success btn-sm" style="font-size:.72rem; padding:.2rem .5rem;">📲</a>`
+          : "";
+        return `<div class="wa-card">
+          <div class="wa-card-header">
+            <span class="wa-card-nombre">${m.nombre}</span>
+            <span class="wa-card-curso">${m.curso}</span>
+            <div style="margin-left:auto; display:flex; gap:.35rem;">
+              <button onclick="copiarTexto(this, '${encodeURIComponent(m.mensaje)}')"
+                      class="btn btn-g-ghost btn-sm" style="font-size:.72rem; padding:.2rem .5rem;">📋</button>
+              ${waBtn}
+            </div>
+          </div>
+          <div class="wa-card-msg">${m.mensaje}</div>
+        </div>`;
+      }).join("");
+      document.getElementById("wa-resultado").innerHTML =
+        `<div style="font-size:.75rem; color:var(--text-muted); margin-bottom:.75rem;">
+           ${data.length} mensajes generados
+         </div>` + cards;
+    }
+    document.getElementById("wa-resultado").style.display = "block";
+  } catch(e) {
+    document.getElementById("wa-loading").style.display  = "none";
+    document.getElementById("wa-resultado").innerHTML    =
+      `<div class="galert galert-danger">Error al conectar con la IA.</div>`;
+    document.getElementById("wa-resultado").style.display = "block";
+  }
+}
+
+// ── ANÁLISIS DE CURSO ─────────────────────────────────────────
+async function analizarCurso() {
+  const curso = document.getElementById("sel-curso-ia").value;
+  if (!curso) return;
+
+  document.getElementById("curso-loading").style.display   = "block";
+  document.getElementById("resultado-curso").style.display = "none";
+
+  try {
+    const r = await fetch("/formacion/ia/curso", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ curso })
+    });
+    const d = await r.json();
+    document.getElementById("curso-loading").style.display = "none";
+
+    if (d.error) {
+      document.getElementById("resultado-curso").innerHTML =
+        `<div class="galert galert-danger">${d.error}</div>`;
+    } else {
+      const riesgoBg    = { alto: "rgba(192,57,43,.1)", medio: "rgba(212,160,23,.1)", bajo: "rgba(45,157,120,.1)" }[d.nivel_riesgo_curso] || "";
+      const riesgoColor = { alto: "var(--red)", medio: "var(--amber)", bajo: "var(--accent)" }[d.nivel_riesgo_curso] || "var(--text)";
+      const recs  = (d.recomendaciones || []).map(r =>
+        `<div class="ia-rec-item"><span style="color:var(--accent);">→</span>${r}</div>`
+      ).join("");
+      const crit  = (d.alumnos_criticos || []).map(n =>
+        `<span style="background:rgba(192,57,43,.1); color:var(--red);
+                padding:.15rem .5rem; border-radius:99px; font-size:.75rem;">${n}</span>`
+      ).join(" ");
+
+      document.getElementById("resultado-curso").innerHTML = `
+        <div style="background:${riesgoBg}; border-radius:10px; padding:.85rem 1rem; margin-bottom:1rem;">
+          <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.4rem;">
+            <span style="font-size:1.2rem;">${d.emoji}</span>
+            <strong style="color:${riesgoColor};">Riesgo ${d.nivel_riesgo_curso?.toUpperCase()}</strong>
+            <span style="font-size:.75rem; color:var(--text-muted); margin-left:auto;">${d.total} alumnos</span>
+          </div>
+          <p style="font-size:.84rem; margin:0; line-height:1.6;">${d.resumen}</p>
+        </div>
+        ${crit ? `<div style="margin-bottom:.85rem; display:flex; gap:.35rem; flex-wrap:wrap;">${crit}</div>` : ""}
+        <div style="font-size:.72rem; font-weight:700; color:var(--text-muted);
+                    text-transform:uppercase; letter-spacing:.05em; margin-bottom:.4rem;">
+          RECOMENDACIONES
+        </div>
+        ${recs}
+        ${d.accion_prioritaria
+          ? `<div style="margin-top:.85rem; padding:.75rem; background:var(--bg3);
+                         border-radius:8px; font-size:.83rem;">
+               <strong>🎯 Acción prioritaria:</strong> ${d.accion_prioritaria}
+             </div>`
+          : ""}`;
+    }
+    document.getElementById("resultado-curso").style.display = "block";
+  } catch(e) {
+    document.getElementById("curso-loading").style.display  = "none";
+    document.getElementById("resultado-curso").innerHTML    =
+      `<div class="galert galert-danger">Error al conectar con la IA.</div>`;
+    document.getElementById("resultado-curso").style.display = "block";
+  }
+}
+
+// ── CHATBOT ───────────────────────────────────────────────────
+const chatEl = document.getElementById("chat-mensajes");
+
+function agregarMensaje(texto, tipo) {
+  const div = document.createElement("div");
+  div.className = tipo === "tutor" ? "msg-tutor" : "msg-ia";
+  div.innerHTML = `<div class="msg-burbuja ${tipo === "tutor" ? "msg-tutor-burbuja" : "msg-ia-burbuja"}">${texto}</div>`;
+  chatEl.appendChild(div);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+async function enviarChat() {
+  const input = document.getElementById("chat-input");
+  const btn   = document.getElementById("btn-chat");
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  input.value  = "";
+  btn.disabled = true;
+  agregarMensaje(msg, "tutor");
+
+  // Indicador de escritura
+  const ld = document.createElement("div");
+  ld.className = "msg-ia"; ld.id = "msg-loading";
+  ld.innerHTML = `<div class="msg-burbuja msg-ia-burbuja" style="opacity:.5;">⟳ Pensando…</div>`;
+  chatEl.appendChild(ld);
+  chatEl.scrollTop = chatEl.scrollHeight;
+
+  try {
+    const r    = await fetch("/formacion/ia/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mensaje: msg })
+    });
+    const data = await r.json();
+    document.getElementById("msg-loading")?.remove();
+    agregarMensaje(data.respuesta || data.error || "—", "ia");
+  } catch(e) {
+    document.getElementById("msg-loading")?.remove();
+    agregarMensaje("Error de conexión. Inténtalo de nuevo.", "ia");
+  }
+  btn.disabled = false;
+  input.focus();
+}
+
+function enviarSugerencia(btn) {
+  document.getElementById("chat-input").value = btn.textContent.trim();
+  enviarChat();
+}
+
+async function limpiarChat() {
+  await fetch("/formacion/ia/chat/limpiar", { method: "POST" });
+  chatEl.innerHTML = `<div class="msg-ia">
+    <div class="msg-burbuja msg-ia-burbuja">🔄 Chat reiniciado. ¿En qué te ayudo?</div>
+  </div>`;
+}
+
+// ── MODAL ANÁLISIS ALUMNO ─────────────────────────────────────
+function abrirAnalisisAlumno(id, nombre, curso) {
+  document.getElementById("modal-ia-titulo").textContent    = nombre;
+  document.getElementById("modal-ia-subtitulo").textContent = curso;
+  document.getElementById("modal-ia-body").innerHTML =
+    `<div style="text-align:center; padding:2rem; color:var(--text-muted);">
+       <span style="display:inline-block; animation:spin .8s linear infinite; font-size:1.5rem;">⟳</span>
+       <div style="margin-top:.5rem;">Analizando con IA…</div>
+     </div>`;
+  document.getElementById("modal-ia").style.display = "flex";
+  document.body.style.overflow = "hidden";
+
+  fetch("/formacion/ia/analizar/" + id)
+    .then(r => r.json())
+    .then(d => renderAnalisisIA(d))
+    .catch(() => {
+      document.getElementById("modal-ia-body").innerHTML =
+        "<div class='galert galert-danger'>Error al conectar con la IA.</div>";
+    });
+}
+
+function renderAnalisisIA(d) {
+  if (d.error) {
+    document.getElementById("modal-ia-body").innerHTML =
+      `<div class="galert galert-danger">${d.error}</div>`;
+    return;
+  }
+  const rc = { alto: "var(--red)", medio: "var(--amber)", bajo: "var(--accent)" }[d.riesgo] || "var(--text-muted)";
+  const rb = { alto: "rgba(192,57,43,.1)", medio: "rgba(212,160,23,.1)", bajo: "rgba(45,157,120,.1)" }[d.riesgo] || "";
+  const recs = (d.recomendaciones || []).map(r =>
+    `<div class="ia-rec-item"><span style="color:var(--accent);">→</span>${r}</div>`
+  ).join("");
+  const tel   = d.alumno?.telefono || "";
+  const waMsg = d.mensaje_wa || "";
+  const waBtn = tel
+    ? `<a href="https://wa.me/${tel.replace(/[^0-9]/g,"")}?text=${encodeURIComponent(waMsg)}"
+         target="_blank" class="btn btn-g-success btn-sm" style="font-size:.75rem;">📲 Enviar</a>`
+    : "";
+  const dias  = d.alumno?.dias_restantes != null ? d.alumno.dias_restantes + " días" : "Sin fecha fin";
+
+  document.getElementById("modal-ia-body").innerHTML = `
+    <div style="background:${rb}; border-radius:10px; padding:.85rem 1rem; margin-bottom:1rem;
+                display:flex; gap:.75rem; align-items:center;">
+      <span style="font-size:1.8rem;">${d.riesgo_emoji}</span>
+      <div>
+        <div style="font-weight:700; color:${rc}; font-size:.95rem;">Riesgo ${(d.riesgo||"").toUpperCase()}</div>
+        <div style="font-size:.75rem; color:var(--text-muted);">
+          Progreso: ${d.alumno?.progreso?.toFixed(1)}% · Exámenes: ${d.alumno?.examenes} · ${dias}
+        </div>
+      </div>
+    </div>
+    <div style="font-size:.72rem; font-weight:700; color:var(--text-muted);
+                text-transform:uppercase; letter-spacing:.05em; margin-bottom:.4rem;">DIAGNÓSTICO</div>
+    <p style="font-size:.84rem; line-height:1.6; margin-bottom:1rem;">${d.diagnostico}</p>
+    <div style="font-size:.72rem; font-weight:700; color:var(--text-muted);
+                text-transform:uppercase; letter-spacing:.05em; margin-bottom:.4rem;">ACCIONES</div>
+    ${recs}
+    <div style="background:var(--bg3); border-radius:10px; padding:1rem; margin-top:1rem;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:.6rem;">
+        <div style="font-size:.72rem; font-weight:700; color:var(--text-muted);
+                    text-transform:uppercase; letter-spacing:.05em;">💬 MENSAJE WHATSAPP</div>
+        <div style="display:flex; gap:.4rem;">
+          <button onclick="copiarTexto(this, '${encodeURIComponent(waMsg)}')"
+                  class="btn btn-g-ghost btn-sm" style="font-size:.72rem;">📋 Copiar</button>
+          ${waBtn}
+        </div>
+      </div>
+      <div style="font-size:.82rem; line-height:1.6;">${waMsg.replace(/\n/g, "<br>")}</div>
+    </div>`;
+}
+
+function cerrarModalIA() {
+  document.getElementById("modal-ia").style.display = "none";
+  document.body.style.overflow = "";
+}
+document.getElementById("modal-ia").addEventListener("click", function(e) {
+  if (e.target === this) cerrarModalIA();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") cerrarModalIA(); });
+
+
+// ── MOODLE ────────────────────────────────────────────────────
+
+// Persistir config en localStorage
+function guardarConfigMoodle() {
+  const cfg = {
+    url:   document.getElementById("moodle-url").value.trim(),
+    token: document.getElementById("moodle-token").value.trim(),
+    curso: document.getElementById("moodle-curso-url").value.trim(),
+    tipo:  document.getElementById("moodle-tipo").value,
+  };
+  localStorage.setItem("moodle_cfg", JSON.stringify(cfg));
+  actualizarBadgeMoodle(cfg);
+  document.getElementById("moodle-config-panel").style.display = "none";
+  document.getElementById("btn-moodle-config").textContent = "⚙ Configurar";
+}
+
+function cargarConfigMoodle() {
+  try {
+    const cfg = JSON.parse(localStorage.getItem("moodle_cfg") || "{}");
+    if (cfg.url)   document.getElementById("moodle-url").value         = cfg.url;
+    if (cfg.token) document.getElementById("moodle-token").value       = cfg.token;
+    if (cfg.curso) document.getElementById("moodle-curso-url").value   = cfg.curso;
+    if (cfg.tipo)  document.getElementById("moodle-tipo").value        = cfg.tipo;
+    actualizarBadgeMoodle(cfg);
+  } catch(e) {}
+}
+
+function actualizarBadgeMoodle(cfg) {
+  const badge = document.getElementById("moodle-status-badge");
+  if (cfg && cfg.url && cfg.token) {
+    const courseId = extraerCourseId(cfg.curso || "");
+    badge.innerHTML = `<span style="color:var(--accent);">● Configurado</span> — ${cfg.url}${courseId ? " · Curso #" + courseId : ""}`;
+  } else {
+    badge.innerHTML = `<span style="color:var(--text-muted);">Sin configurar</span>`;
+  }
+}
+
+function toggleMoodleConfig() {
+  const panel = document.getElementById("moodle-config-panel");
+  const btn   = document.getElementById("btn-moodle-config");
+  const open  = panel.style.display === "none";
+  panel.style.display = open ? "block" : "none";
+  btn.textContent     = open ? "✕ Cerrar" : "⚙ Configurar";
+}
+
+function extraerCourseId(urlOrId) {
+  if (!urlOrId) return "";
+  const m = urlOrId.match(/[?&]id=(\d+)/);
+  if (m) return m[1];
+  if (/^\d+$/.test(urlOrId.trim())) return urlOrId.trim();
+  return "";
+}
+
+async function cargarMensajesMoodle() {
+  const url   = document.getElementById("moodle-url").value.trim();
+  const token = document.getElementById("moodle-token").value.trim();
+  const curso = document.getElementById("moodle-curso-url").value.trim();
+  const tipo  = document.getElementById("moodle-tipo").value;
+
+  if (!url || !token) {
+    alert("Configura primero la URL y el token de Moodle (botón ⚙ Configurar).");
+    return;
+  }
+
+  const courseId = extraerCourseId(curso);
+  if (!courseId && (tipo === "ambos" || tipo === "foros")) {
+    alert("Introduce la URL del curso o su ID numérico.");
+    return;
+  }
+
+  document.getElementById("moodle-loading").style.display   = "block";
+  document.getElementById("moodle-resultado").style.display = "none";
+
+  try {
+    const r    = await fetch("/formacion/ia/moodle/mensajes", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ url, token, course_id: courseId, tipo }),
+    });
+    const data = await r.json();
+    document.getElementById("moodle-loading").style.display = "none";
+
+    if (data.error) {
+      document.getElementById("moodle-resultado").innerHTML =
+        `<div class="galert galert-danger">⚠ ${data.error}</div>`;
+      document.getElementById("moodle-resultado").style.display = "block";
+      return;
+    }
+
+    renderMoodleResultados(data);
+  } catch(e) {
+    document.getElementById("moodle-loading").style.display = "none";
+    document.getElementById("moodle-resultado").innerHTML =
+      `<div class="galert galert-danger">Error de conexión. Comprueba la URL y el token.</div>`;
+    document.getElementById("moodle-resultado").style.display = "block";
+  }
+}
+
+function renderMoodleResultados(data) {
+  const foros    = data.foros    || [];
+  const privados = data.privados || [];
+
+  document.getElementById("badge-foros").textContent    = foros.length;
+  document.getElementById("badge-privados").textContent = privados.length;
+
+  // Renderizar foros
+  const listaForos = document.getElementById("moodle-foros-lista");
+  if (!foros.length) {
+    listaForos.innerHTML = `<div class="moodle-empty">💬 No hay mensajes de foro pendientes de respuesta.</div>`;
+  } else {
+    listaForos.innerHTML = foros.map((m, i) => renderMoodleCard(m, i, "foro")).join("");
+  }
+
+  // Renderizar privados
+  const listaPriv = document.getElementById("moodle-privados-lista");
+  if (!privados.length) {
+    listaPriv.innerHTML = `<div class="moodle-empty">✉ No hay mensajes privados pendientes.</div>`;
+  } else {
+    listaPriv.innerHTML = privados.map((m, i) => renderMoodleCard(m, i, "priv")).join("");
+  }
+
+  document.getElementById("moodle-resultado").style.display = "block";
+}
+
+function renderMoodleCard(m, idx, tipo) {
+  const id     = `moodle-${tipo}-${idx}`;
+  const fecha  = m.fecha  || "";
+  const autor  = m.autor  || "Alumno";
+  const asunto = m.asunto || (tipo === "foro" ? "Sin asunto" : "Mensaje privado");
+  const cuerpo = (m.mensaje || "").replace(/<[^>]+>/g, " ").trim(); // strip HTML básico
+  const tipoLabel = tipo === "foro"
+    ? `<span style="background:rgba(0,100,200,.12); color:var(--blue);
+                    font-size:.68rem; padding:.1rem .45rem; border-radius:99px;">Foro</span>`
+    : `<span style="background:rgba(45,157,120,.12); color:var(--accent);
+                    font-size:.68rem; padding:.1rem .45rem; border-radius:99px;">Privado</span>`;
+
+  return `
+<div class="moodle-msg-card moodle-tipo-${tipo}">
+  <div class="moodle-msg-header">
+    ${tipoLabel}
+    <span class="moodle-msg-autor">👤 ${autor}</span>
+    <span class="moodle-msg-meta">${fecha}</span>
+    <span class="moodle-msg-asunto ms-auto">📌 ${asunto}</span>
+  </div>
+  <div class="moodle-msg-body">${cuerpo || "<em style='color:var(--text-muted);'>Mensaje vacío</em>"}</div>
+  <div class="moodle-msg-footer">
+    <button onclick="generarRespuestaMoodle('${id}', ${JSON.stringify(autor).replace(/'/g,"\\'")} , ${JSON.stringify(cuerpo).replace(/'/g,"\\'")} , ${JSON.stringify(asunto).replace(/'/g,"\\'")} , '${tipo}')"
+            class="btn btn-g-primary btn-sm" style="font-size:.76rem;">
+      ✨ Generar respuesta IA
+    </button>
+    <div id="${id}-loading" style="display:none; font-size:.78rem; color:var(--text-muted);">
+      <span style="display:inline-block; animation:spin .8s linear infinite;">⟳</span> Generando…
+    </div>
+    <div id="${id}-btns" style="display:none; margin-left:auto; display:flex; gap:.35rem;">
+      <button onclick="copiarRespuestaMoodle('${id}')" class="btn btn-g-ghost btn-sm" style="font-size:.72rem;">
+        📋 Copiar
+      </button>
+      ${tipo === "foro"
+        ? `<button onclick="alert('Integra aquí la llamada al endpoint de reply de Moodle con el post_id.')"
+                   class="btn btn-g-success btn-sm" style="font-size:.72rem;">📤 Enviar al foro</button>`
+        : `<button onclick="alert('Integra aquí el envío del mensaje privado vía Moodle API.')"
+                   class="btn btn-g-success btn-sm" style="font-size:.72rem;">✉ Responder</button>`
+      }
+    </div>
+  </div>
+  <div id="${id}-resp" class="moodle-respuesta"></div>
+</div>`;
+}
+
+async function generarRespuestaMoodle(id, autor, mensaje, asunto, tipo) {
+  document.getElementById(id + "-loading").style.display = "inline";
+  document.getElementById(id + "-btns").style.display    = "none";
+  document.getElementById(id + "-resp").style.display    = "none";
+
+  try {
+    const r = await fetch("/formacion/ia/moodle/responder", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ autor, mensaje, asunto, tipo }),
+    });
+    const data = await r.json();
+    document.getElementById(id + "-loading").style.display = "none";
+
+    const respEl = document.getElementById(id + "-resp");
+    respEl.textContent    = data.respuesta || data.error || "—";
+    respEl.style.display  = "block";
+    document.getElementById(id + "-btns").style.display = "flex";
+  } catch(e) {
+    document.getElementById(id + "-loading").style.display = "none";
+    document.getElementById(id + "-resp").textContent     = "Error al generar respuesta.";
+    document.getElementById(id + "-resp").style.display   = "block";
+  }
+}
+
+function copiarRespuestaMoodle(id) {
+  const texto = document.getElementById(id + "-resp").textContent;
+  navigator.clipboard.writeText(texto).then(() => {
+    const btn = document.querySelector(`#${id}-btns button`);
+    if (btn) { const orig = btn.textContent; btn.textContent = "✅ Copiado"; setTimeout(() => btn.textContent = orig, 2000); }
+  });
+}
+
+function cambiarSubtabMoodle(nombre) {
+  ["foros","privados"].forEach(n => {
+    document.getElementById("subtab-" + n).style.display = n === nombre ? "block" : "none";
+    const btn = document.getElementById("subtab-btn-" + n);
+    btn.style.color            = n === nombre ? "var(--accent)" : "var(--text-muted)";
+    btn.style.borderBottomColor = n === nombre ? "var(--accent)" : "transparent";
+  });
+}
+
+// Cargar config al arrancar
+cargarConfigMoodle();
+
+
+function copiarTexto(btn, encoded) {
+  navigator.clipboard.writeText(decodeURIComponent(encoded)).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = "✅";
+    setTimeout(() => btn.textContent = orig, 2000);
+  });
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,750 @@
+{% extends "base.html" %}
+{% block title %}Dashboard Formación — Gestor{% endblock %}
+
+{% block content %}
+
+<!-- ── Header ──────────────────────────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h4 style="font-weight:700; margin:0;">📊 Dashboard de Formación</h4>
+    <div style="font-family:var(--mono); font-size:.75rem; color:var(--text-muted); margin-top:.2rem;">
+      Rendimiento por curso · {{ cursos|length }} curso{{ 's' if cursos|length != 1 else '' }} · {{ alumnos|length }} alumno{{ 's' if alumnos|length != 1 else '' }}
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('formacion.exportar_excel') }}" class="btn btn-g-success">⬇ Descargar Excel</a>
+    <a href="{{ url_for('formacion.formacion') }}" class="btn btn-g-ghost">← Volver a Formación</a>
+  </div>
+</div>
+
+<!-- ── Selector de cursos ──────────────────────────────────────────── -->
+<div class="course-bar" id="courseBar">
+  <button class="course-tab active" data-curso="__ALL__">
+    🎓 Todos los alumnos <span class="ct-badge">{{ alumnos|length }}</span>
+  </button>
+  {% for c in cursos %}
+  {% set cnt = alumnos | selectattr('curso', 'equalto', c) | list | length %}
+  <button class="course-tab" data-curso="{{ c }}">{{ c }} <span class="ct-badge">{{ cnt }}</span></button>
+  {% endfor %}
+</div>
+
+<!-- ── KPI Cards ──────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card blue">
+      <div class="stat-label">Total alumnos</div>
+      <div class="stat-value" id="kpi-total">{{ alumnos|length }}</div>
+      <div class="kpi-curso-nombre" id="kpi-curso-lbl">Todos los cursos</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card green">
+      <div class="stat-label">Superan 75%</div>
+      <div class="stat-value" id="kpi-superan" style="color:var(--accent);">{{ superan_75 }}</div>
+      <div style="font-size:.8rem; color:var(--text-muted);">alumnos</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card amber">
+      <div class="stat-label">Bajo 75%</div>
+      <div class="stat-value" id="kpi-nosuperan" style="color:var(--amber);">{{ no_superan }}</div>
+      <div style="font-size:.8rem; color:var(--text-muted);">alumnos</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card red">
+      <div class="stat-label">Tasa de éxito</div>
+      <div class="stat-value" id="kpi-pct" style="color:var(--blue); font-size:1.8rem;">{{ pct_exito }}%</div>
+      <div style="font-size:.8rem; color:var(--text-muted);" id="kpi-examenes">{{ total_examenes }} exámenes</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Barra tasa de éxito ────────────────────────────────────────── -->
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--accent)">▰</span>
+    <span class="gcard-title">Tasa de éxito</span>
+    <span style="margin-left:auto; font-family:var(--mono); font-size:.78rem; color:var(--accent);" id="bar-pct-lbl">{{ pct_exito }}%</span>
+  </div>
+  <div class="gcard-body">
+    <div style="height:10px; background:var(--bg3); border-radius:99px; overflow:hidden;">
+      <div id="bar-pct-fill" style="height:100%; width:{{ pct_exito }}%; background:linear-gradient(90deg,var(--accent),#4dc663); border-radius:99px; transition:width .6s ease;"></div>
+    </div>
+    <div class="d-flex justify-content-between mt-2" style="font-family:var(--mono); font-size:.72rem; color:var(--text-muted);">
+      <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+    </div>
+    <div class="mt-3 d-flex gap-3 flex-wrap" style="font-size:.85rem; color:var(--text-muted);">
+      <span>📊 Progreso promedio: <strong style="color:var(--text);" id="bar-avg">{{ avg_progreso }}%</strong></span>
+      <span>📝 Exámenes realizados: <strong style="color:var(--text);" id="bar-examenes">{{ total_examenes }}</strong></span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Gráfico progreso por alumno ────────────────────────────────── -->
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--blue)">◉</span>
+    <span class="gcard-title">Progreso por alumno</span>
+    <span style="font-size:.72rem; color:var(--text-muted); margin-left:auto;" id="lbl-visible-count">{{ alumnos|length }} alumnos</span>
+  </div>
+  <div class="gcard-body">
+    <div class="range-filters">
+      <label class="range-pill rp-red"><input type="checkbox" class="rng-chk" data-range="0" checked>🔴 0–24% <span class="rng-count" id="cnt-0" style="opacity:.7;"></span></label>
+      <label class="range-pill rp-amber"><input type="checkbox" class="rng-chk" data-range="25" checked>🟡 25–49% <span class="rng-count" id="cnt-25" style="opacity:.7;"></span></label>
+      <label class="range-pill rp-blue"><input type="checkbox" class="rng-chk" data-range="50" checked>🔵 50–74% <span class="rng-count" id="cnt-50" style="opacity:.7;"></span></label>
+      <label class="range-pill rp-green"><input type="checkbox" class="rng-chk" data-range="75" checked>🟢 ≥75% <span class="rng-count" id="cnt-75" style="opacity:.7;"></span></label>
+    </div>
+    <div class="range-summary" id="rangeSummary"></div>
+    <div style="position:relative; overflow-y:auto;"><canvas id="chartBarras"></canvas></div>
+    <div id="no-chart-data" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
+      <div style="font-size:1.8rem; margin-bottom:.5rem;">🔍</div>Ningún rango seleccionado o no hay alumnos.
+    </div>
+  </div>
+</div>
+
+<!-- ── Dona + distribución por rango ─────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-4">
+    <div class="gcard h-100">
+      <div class="gcard-header"><span style="color:var(--accent)">◎</span><span class="gcard-title">Distribución</span></div>
+      <div class="gcard-body" style="display:flex; align-items:center; justify-content:center;">
+        <canvas id="chartDona" style="max-height:115px; max-width:115px;"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="gcard h-100">
+      <div class="gcard-header"><span style="color:var(--amber)">▤</span><span class="gcard-title">Alumnos por rango de progreso</span></div>
+      <div class="gcard-body"><canvas id="chartRangos" style="max-height:110px;"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     TABLA 1 — ALUMNOS POR N.º DE CURSOS
+══════════════════════════════════════════════════════════════════════ -->
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--blue)">⊞</span>
+    <span class="gcard-title">Alumnos por cantidad de cursos</span>
+    <span style="font-size:.72rem; color:var(--text-muted); margin-left:auto;" id="lbl-cursos-count">cargando…</span>
+  </div>
+  <div class="gcard-body">
+
+    <!-- KPIs mini -->
+    <div style="display:flex; flex-wrap:wrap; gap:.6rem; margin-bottom:1.1rem;">
+      <div class="stat-card blue"  style="flex:1; min-width:120px; padding:.7rem 1rem;"><div class="stat-label" style="font-size:.7rem;">Con 1 curso</div><div class="stat-value" style="font-size:1.4rem;" id="kpi-nc-1">—</div></div>
+      <div class="stat-card amber" style="flex:1; min-width:120px; padding:.7rem 1rem;"><div class="stat-label" style="font-size:.7rem;">Con 2 cursos</div><div class="stat-value" style="font-size:1.4rem;" id="kpi-nc-2">—</div></div>
+      <div class="stat-card green" style="flex:1; min-width:120px; padding:.7rem 1rem;"><div class="stat-label" style="font-size:.7rem;">Con 3+ cursos</div><div class="stat-value" style="font-size:1.4rem;" id="kpi-nc-3">—</div></div>
+      <div class="stat-card red"   style="flex:1; min-width:120px; padding:.7rem 1rem;"><div class="stat-label" style="font-size:.7rem;">Promedio cursos</div><div class="stat-value" style="font-size:1.4rem;" id="kpi-nc-avg">—</div></div>
+    </div>
+
+    <!-- Controles -->
+    <div class="row g-2 mb-3 align-items-end">
+      <div class="col-12 col-md-4">
+        <div class="search-wrap"><span class="search-icon">🔍</span>
+          <input type="text" id="buscador-cursos" class="form-control" placeholder="Buscar alumno o curso…">
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label" style="font-size:.78rem;">Filtrar por N.º cursos</label>
+        <div id="curso-count-pills" style="display:flex; gap:.4rem; flex-wrap:wrap; padding-top:.2rem;"></div>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Ordenar</label>
+        <select id="sel-orden-nc" class="form-select">
+          <option value="nc_desc">N.º cursos ↓</option>
+          <option value="nc_asc">N.º cursos ↑</option>
+          <option value="nombre_asc">Alumno A→Z</option>
+          <option value="prog_desc">Progreso ↓</option>
+          <option value="exam_desc">Exámenes ↓</option>
+        </select>
+      </div>
+      <div class="col-4 col-md-2">
+        <label class="form-label">Por página</label>
+        <select id="sel-pp-nc" class="form-select">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="9999">Todos</option>
+        </select>
+      </div>
+      <div class="col-2 col-md-1">
+        <label class="form-label">&nbsp;</label>
+        <button onclick="limpiarNC()" class="btn btn-g-ghost w-100" title="Limpiar">✕</button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="gtable">
+        <thead>
+          <tr>
+            <th>Alumno</th>
+            <th style="text-align:center;">N.º cursos</th>
+            <th>Cursos</th>
+            <th style="text-align:center;">Progreso prom.</th>
+            <th style="text-align:center;">Superan 75%</th>
+            <th style="text-align:center;">Exámenes</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-por-cursos">
+          <tr><td colspan="6" style="text-align:center; padding:2rem; color:var(--text-muted);">Cargando…</td></tr>
+        </tbody>
+      </table>
+      <div id="no-results-cursos" style="display:none; text-align:center; padding:2rem; color:var(--text-muted);">
+        <div style="font-size:1.6rem; margin-bottom:.4rem;">🔍</div>Ningún alumno coincide.
+      </div>
+    </div>
+
+    <!-- Paginación tabla 1 -->
+    <div id="pag-nc-wrap" style="display:none; padding:.85rem 0 .25rem; border-top:1px solid var(--border); margin-top:.5rem;">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span id="pag-nc-info" style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted);"></span>
+        <ul class="gpagination" id="pag-nc-controls" style="margin:0;"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Historial automático ──────────────────────────────────────── -->
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--blue)">📈</span>
+    <span class="gcard-title">Historial automático de cambios</span>
+    <span style="font-size:.72rem; color:var(--text-muted); margin-left:.6rem;">Se registra al importar o borrar alumnos</span>
+    {% if historial_auto %}
+    <span class="badge-g badge-pending ms-auto" style="font-size:.67rem; margin-right:.5rem;">{{ historial_auto|length }} registros</span>
+    <form method="POST" action="{{ url_for('formacion.borrar_historial_auto') }}" onsubmit="return confirm('¿Borrar todo el historial automático?')">
+      <button type="submit" class="btn btn-g-danger btn-sm" style="font-size:.75rem; white-space:nowrap;">🗑 Borrar historial</button>
+    </form>
+    {% else %}
+    <span style="font-size:.72rem; color:var(--text-muted); margin-left:auto;">0 registros</span>
+    {% endif %}
+  </div>
+  <div class="gcard-body">
+    {% if historial_auto %}
+    <div class="snap-legend mb-2">
+      <label><input type="checkbox" id="chk-hist-alumnos" checked style="accent-color:#58a6ff;"><span style="color:#58a6ff;">●</span> Total alumnos</label>
+      <label><input type="checkbox" id="chk-hist-cursos"  checked style="accent-color:#3fb950;"><span style="color:#3fb950;">●</span> Total cursos</label>
+    </div>
+    <canvas id="chartHistAuto" style="max-height:120px; margin-bottom:.8rem;"></canvas>
+    <div class="table-responsive">
+      <table class="gtable">
+        <thead><tr><th>Fecha</th><th>Evento</th><th style="text-align:center;">Total alumnos</th><th style="text-align:center;">Total cursos</th></tr></thead>
+        <tbody>
+          {% for h in historial_auto %}
+          <tr>
+            <td style="font-family:var(--mono); font-size:.78rem; white-space:nowrap;">{{ h['fecha'] }}</td>
+            <td><span class="badge-g {% if 'Importación' in h['evento'] %}badge-done{% elif 'Borrado' in h['evento'] %}badge-pending{% else %}badge-cat{% endif %}">{{ h['evento'] }}</span></td>
+            <td style="font-family:var(--mono); text-align:center; font-weight:700;">{{ h['total_alumnos'] }}</td>
+            <td style="font-family:var(--mono); text-align:center; color:var(--accent); font-weight:700;">{{ h['total_cursos'] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center; padding:2.5rem; color:var(--text-muted);">
+      <div style="font-size:2rem; margin-bottom:.5rem;">📊</div>El historial se generará automáticamente al importar o eliminar alumnos.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Snapshots históricos ──────────────────────────────────────── -->
+{% if snapshots %}
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--blue)">📈</span>
+    <span class="gcard-title">Evolución histórica</span>
+    <span style="font-size:.72rem; color:var(--text-muted); margin-left:auto;">{{ snapshots|length }} snapshot{{ 's' if snapshots|length != 1 else '' }}</span>
+  </div>
+  <div class="gcard-body">
+    <div class="snap-legend">
+      <label><input type="checkbox" id="chk-exito" checked style="accent-color:#3fb950;"><span style="color:#3fb950;">●</span> Tasa de éxito (%)</label>
+      <label><input type="checkbox" id="chk-avg"   checked style="accent-color:#58a6ff;"><span style="color:#58a6ff;">●</span> Progreso promedio (%)</label>
+      <label><input type="checkbox" id="chk-total"        style="accent-color:#d29922;"><span style="color:#d29922;">●</span> Total alumnos</label>
+    </div>
+    <canvas id="chartHistorial" style="max-height:130px;"></canvas>
+    <div class="table-responsive mt-4">
+      <table class="gtable">
+        <thead><tr><th>Etiqueta</th><th>Fecha</th><th>Alumnos</th><th>Superan 75%</th><th>Tasa éxito</th><th>Prog. promedio</th><th></th></tr></thead>
+        <tbody>
+          {% for s in snapshots|reverse %}
+          <tr>
+            <td style="font-weight:600;">{{ s['label'] }}</td>
+            <td style="font-family:var(--mono); font-size:.78rem;">{{ s['fecha'] }}</td>
+            <td style="font-family:var(--mono); text-align:center;">{{ s['total'] }}</td>
+            <td style="font-family:var(--mono); text-align:center; color:var(--accent);">{{ s['superan_75'] }}</td>
+            <td><span class="badge-g {{ 'badge-done' if s['pct_exito'] >= 75 else ('badge-pending' if s['pct_exito'] >= 50 else 'badge-cat') }}">{{ s['pct_exito'] }}%</span></td>
+            <td style="font-family:var(--mono); font-size:.82rem;">{{ s['avg_progreso'] }}%</td>
+            <td><a href="{{ url_for('formacion.borrar_snapshot', snap_id=s['id']) }}" class="btn btn-g-danger btn-sm" onclick="return confirm('¿Borrar este snapshot?')">🗑</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════════════════
+     TABLA 2 — HISTORIAL DE ALUMNOS
+══════════════════════════════════════════════════════════════════════ -->
+<div class="gcard">
+  <div class="gcard-header">
+    <span style="color:var(--text-muted)">🗂</span>
+    <span class="gcard-title">Historial de alumnos</span>
+    <span class="badge-g badge-pending ms-auto" style="font-size:.68rem;" id="lbl-table-count">{{ alumnos|length }} registros</span>
+  </div>
+  <div class="gcard-body pb-0">
+
+    <!-- Controles -->
+    <div class="row g-2 mb-3 align-items-end">
+      <div class="col-12 col-md-4">
+        <div class="search-wrap"><span class="search-icon">🔍</span>
+          <input type="text" id="buscador" class="form-control" placeholder="Buscar alumno o curso…">
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Estado</label>
+        <select id="sel-estado-hist" class="form-select">
+          <option value="">Todos</option>
+          <option value="supera">✔ Supera 75%</option>
+          <option value="bajo">● Bajo 75%</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Rango progreso</label>
+        <select id="sel-rango-hist" class="form-select">
+          <option value="">Todos</option>
+          <option value="75">🟢 ≥ 75%</option>
+          <option value="50">🔵 50–74%</option>
+          <option value="25">🟡 25–49%</option>
+          <option value="0">🔴 0–24%</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Ordenar por</label>
+        <select id="sel-orden-hist" class="form-select">
+          <option value="prog_desc">Progreso ↓</option>
+          <option value="prog_asc">Progreso ↑</option>
+          <option value="nombre_asc">Nombre A→Z</option>
+          <option value="nombre_desc">Nombre Z→A</option>
+          <option value="curso_asc">Curso A→Z</option>
+          <option value="exam_desc">Exámenes ↓</option>
+          <option value="fecha_desc">Fecha import. ↓</option>
+        </select>
+      </div>
+      <div class="col-4 col-md-1">
+        <label class="form-label">Por pág.</label>
+        <select id="sel-pp-hist" class="form-select">
+          <option value="10">10</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+          <option value="9999">Todo</option>
+        </select>
+      </div>
+      <div class="col-2 col-md-1">
+        <label class="form-label">&nbsp;</label>
+        <button onclick="limpiarHist()" class="btn btn-g-ghost w-100" title="Limpiar">✕</button>
+      </div>
+    </div>
+
+    <!-- Paginación superior -->
+    <div id="pag-hist-top-wrap" style="display:none; margin-bottom:.75rem;">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span id="pag-hist-info-top" style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted);"></span>
+        <ul class="gpagination" id="pag-hist-top" style="margin:0;"></ul>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="gtable" id="tabla-historial">
+        <thead>
+          <tr>
+            <th>Curso</th><th>Nombre</th><th>Progreso</th>
+            <th style="text-align:center;">Exámenes</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>Importado</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-historial">
+          {% for a in alumnos %}
+          {% set p = a['progreso'] %}
+          {% set rango = '75' if p >= 75 else ('50' if p >= 50 else ('25' if p >= 25 else '0')) %}
+          <tr data-search="{{ a['nombre']|lower }} {{ (a['curso'] or '')|lower }}"
+              data-curso="{{ a['curso'] if a['curso'] else '' }}"
+              data-rango="{{ rango }}"
+              data-estado="{{ 'supera' if a['supera_75'] == 1 else 'bajo' }}"
+              data-prog="{{ p }}"
+              data-nombre="{{ a['nombre']|lower }}"
+              data-exam="{{ a['examenes'] if a['examenes'] is not none else 0 }}"
+              data-fecha="{{ a['created_at'][:10] if a['created_at'] else '' }}">
+            <td data-label="Curso"><span class="badge-g badge-cat">{{ a['curso'] if a['curso'] else '—' }}</span></td>
+            <td data-label="Nombre" style="font-weight:600;">{{ a['nombre'] }}</td>
+            <td data-label="Progreso">
+              <div style="display:flex; align-items:center; gap:.6rem;">
+                <div style="flex:1; height:6px; background:var(--bg3); border-radius:99px; overflow:hidden; min-width:60px;">
+                  <div style="height:100%; width:{{ [p,100]|min }}%;
+                              background:{{ 'var(--accent)' if p >= 75 else ('var(--blue)' if p >= 50 else ('var(--amber)' if p >= 25 else 'var(--red)')) }};
+                              border-radius:99px;"></div>
+                </div>
+                <span style="font-family:var(--mono); font-size:.78rem; min-width:38px;">{{ p }}%</span>
+              </div>
+            </td>
+            <td style="font-family:var(--mono); font-size:.83rem; text-align:center;">{{ a['examenes'] if a['examenes'] is not none else 0 }}</td>
+            <td style="font-family:var(--mono); font-size:.78rem; white-space:nowrap;">{{ a['fecha_inicio'] if a['fecha_inicio'] else '—' }}</td>
+            <td style="font-family:var(--mono); font-size:.78rem; white-space:nowrap;">{{ a['fecha_fin'] if a['fecha_fin'] else '—' }}</td>
+            <td>
+              {% if a['supera_75'] == 1 %}<span class="badge-g badge-done">✔ Supera 75%</span>
+              {% else %}<span class="badge-g badge-pending">● Bajo 75%</span>{% endif %}
+            </td>
+            <td style="font-family:var(--mono); font-size:.72rem; color:var(--text-muted); white-space:nowrap;">{{ a['created_at'][:10] if a['created_at'] else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr id="hist-empty-row">
+            <td colspan="8" style="text-align:center; padding:3rem; color:var(--text-muted);">
+              <div style="font-size:2rem; margin-bottom:.5rem;">📋</div>No hay historial de alumnos aún.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div id="no-results" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
+        <div style="font-size:1.8rem; margin-bottom:.5rem;">🔍</div>Sin resultados para los filtros aplicados.
+      </div>
+    </div>
+
+    <!-- Paginación inferior -->
+    <div id="pag-hist-bot-wrap" style="display:none; padding:.85rem 0 1.25rem; border-top:1px solid var(--border); margin-top:.5rem;">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span id="pag-hist-info-bot" style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted);"></span>
+        <ul class="gpagination" id="pag-hist-bot" style="margin:0;"></ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* ─── DATOS ──────────────────────────────────────────────────────── */
+const ALL_ALUMNOS = {{ alumnos | tojson }};
+const isLight   = document.body.classList.contains('light');
+const gridColor = isLight ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.06)';
+const textColor = isLight ? '#636c76' : '#7d8590';
+const bgTT=isLight?'#fff':'#161b22', bdTT=isLight?'#d0d7de':'#30363d', txTT=isLight?'#24292f':'#e6edf3';
+const TT={backgroundColor:bgTT,borderColor:bdTT,borderWidth:1,titleColor:txTT,bodyColor:textColor};
+
+/* ─── ESTADO ─────────────────────────────────────────────────────── */
+let activeCurso='__ALL__';
+function alumnosCurso(){return activeCurso==='__ALL__'?ALL_ALUMNOS:ALL_ALUMNOS.filter(a=>a.curso===activeCurso);}
+
+/* ─── HELPERS ────────────────────────────────────────────────────── */
+function getRange(p){return p>=75?'75':p>=50?'50':p>=25?'25':'0';}
+const RCOL={'0':{bar:'rgba(248,81,73,.78)',bd:'#f85149'},'25':{bar:'rgba(210,153,34,.78)',bd:'#d29922'},'50':{bar:'rgba(88,166,255,.78)',bd:'#58a6ff'},'75':{bar:'rgba(63,185,80,.78)',bd:'#3fb950'}};
+const RLBL={'0':'0–24%','25':'25–49%','50':'50–74%','75':'≥75%'};
+function activeRanges(){return [...document.querySelectorAll('.rng-chk')].filter(c=>c.checked).map(c=>c.dataset.range);}
+
+/* ─── PAGINACIÓN UNIVERSAL ───────────────────────────────────────── */
+function pageRange(cur,total){
+  if(total<=7)return Array.from({length:total},(_,i)=>i+1);
+  const s=new Set([1,total,cur]);if(cur>1)s.add(cur-1);if(cur<total)s.add(cur+1);
+  const arr=Array.from(s).sort((a,b)=>a-b),res=[];
+  for(let i=0;i<arr.length;i++){if(i>0&&arr[i]-arr[i-1]>1)res.push('…');res.push(arr[i]);}return res;
+}
+function buildPagUL(ul,cur,pages,onGo){
+  ul.innerHTML='';
+  const add=(label,page,dis,act)=>{
+    const li=document.createElement('li');li.className=(dis?'disabled ':'')+(act?'active':'');
+    const a=document.createElement('a');a.className='gpage-link';a.textContent=label;a.href='#';
+    a.addEventListener('click',e=>{e.preventDefault();if(!dis)onGo(page);});li.appendChild(a);ul.appendChild(li);
+  };
+  add('← Ant',cur-1,cur<=1,false);
+  pageRange(cur,pages).forEach(p=>{
+    if(p==='…'){const li=document.createElement('li');li.className='disabled';li.innerHTML='<span class="gpage-link" style="cursor:default">…</span>';ul.appendChild(li);}
+    else add(p,p,false,p===cur);
+  });
+  add('Sig →',cur+1,cur>=pages,false);
+}
+
+/* ─── SELECTOR CURSOS ────────────────────────────────────────────── */
+document.querySelectorAll('.course-tab').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.course-tab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');activeCurso=btn.dataset.curso;updateAll();
+  });
+});
+
+/* ─── KPIs ───────────────────────────────────────────────────────── */
+function updateKPIs(pool){
+  const total=pool.length,sup=pool.filter(a=>a.supera_75===1).length;
+  const pct=total?Math.round(sup/total*1000)/10:0;
+  const avg=total?Math.round(pool.reduce((s,a)=>s+a.progreso,0)/total*10)/10:0;
+  const ex=pool.reduce((s,a)=>s+(a.examenes||0),0);
+  document.getElementById('kpi-total').textContent=total;
+  document.getElementById('kpi-superan').textContent=sup;
+  document.getElementById('kpi-nosuperan').textContent=total-sup;
+  document.getElementById('kpi-pct').textContent=pct+'%';
+  document.getElementById('kpi-examenes').textContent=ex+' exámenes';
+  document.getElementById('kpi-curso-lbl').textContent=activeCurso==='__ALL__'?'Todos los cursos':activeCurso;
+  document.getElementById('bar-pct-lbl').textContent=pct+'%';
+  document.getElementById('bar-pct-fill').style.width=pct+'%';
+  document.getElementById('bar-avg').textContent=avg+'%';
+  document.getElementById('bar-examenes').textContent=ex;
+}
+
+/* ─── RANGOS ─────────────────────────────────────────────────────── */
+function countsByRange(pool){const c={'0':0,'25':0,'50':0,'75':0};pool.forEach(a=>c[getRange(a.progreso)]++);return c;}
+function updateRangePills(pool){const c=countsByRange(pool);['0','25','50','75'].forEach(r=>{const el=document.getElementById('cnt-'+r);if(el)el.textContent='('+c[r]+')';});}
+
+/* ─── GRÁFICO BARRAS ─────────────────────────────────────────────── */
+let chartBarras=null;
+function buildBarChart(pool){
+  const active=activeRanges();
+  const pairs=pool.filter(a=>active.includes(getRange(a.progreso))).sort((a,b)=>b.progreso-a.progreso);
+  const canvas=document.getElementById('chartBarras'),noData=document.getElementById('no-chart-data');
+  const vis=pairs.length;
+  const avg=vis?Math.round(pairs.reduce((s,a)=>s+a.progreso,0)/vis):0;
+  document.getElementById('rangeSummary').innerHTML=`<span>Mostrando <strong>${vis}</strong> alumno${vis!==1?'s':''}</span><span>· Promedio: <strong>${avg}%</strong></span>`;
+  document.getElementById('lbl-visible-count').textContent=vis+' alumnos';
+  if(!vis){canvas.style.display='none';noData.style.display='block';if(chartBarras){chartBarras.destroy();chartBarras=null;}return;}
+  canvas.style.display='block';noData.style.display='none';
+  canvas.style.height=Math.max(100,vis*12+36)+'px';canvas.style.maxHeight='';
+  if(chartBarras)chartBarras.destroy();
+  chartBarras=new Chart(canvas,{type:'bar',
+    data:{labels:pairs.map(p=>p.nombre),datasets:[{label:'Progreso (%)',data:pairs.map(p=>p.progreso),
+      backgroundColor:pairs.map(p=>RCOL[getRange(p.progreso)].bar),borderColor:pairs.map(p=>RCOL[getRange(p.progreso)].bd),
+      borderWidth:1.5,borderRadius:5,borderSkipped:false}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:ctx=>` ${ctx.parsed.x}%  · ${RLBL[getRange(ctx.parsed.x)]}`}}},
+      scales:{x:{beginAtZero:true,max:100,ticks:{color:textColor,callback:v=>v+'%'},grid:{color:gridColor}},
+              y:{ticks:{color:textColor,font:{size:11}},grid:{display:false}}}},
+    plugins:[
+      {id:'line75',afterDraw(c){const{ctx,chartArea:{top,bottom},scales:{x}}=c;const xp=x.getPixelForValue(75);ctx.save();ctx.beginPath();ctx.moveTo(xp,top);ctx.lineTo(xp,bottom);ctx.strokeStyle='rgba(63,185,80,.55)';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);ctx.stroke();ctx.font='11px var(--mono,monospace)';ctx.fillStyle='#3fb950';ctx.fillText('75%',xp+4,top+12);ctx.restore();}},
+      {id:'vals',afterDatasetsDraw(c){const{ctx,data,scales:{x,y}}=c;data.datasets[0].data.forEach((v,i)=>{const xp=x.getPixelForValue(v),yp=y.getPixelForValue(i);ctx.save();ctx.font='bold 11px var(--mono,monospace)';ctx.fillStyle=isLight?'#24292f':'#e6edf3';ctx.textBaseline='middle';ctx.fillText(v+'%',xp+6,yp);ctx.restore();});}}
+    ]});
+}
+
+/* ─── DONA ───────────────────────────────────────────────────────── */
+let chartDona=null;
+function buildDona(pool){
+  const sup=pool.filter(a=>a.supera_75===1).length,nosup=pool.length-sup;
+  if(chartDona){chartDona.data.datasets[0].data=[sup,nosup];chartDona.update();return;}
+  chartDona=new Chart(document.getElementById('chartDona'),{type:'doughnut',
+    data:{labels:['Superan 75%','Bajo 75%'],datasets:[{data:[sup,nosup],backgroundColor:['rgba(63,185,80,.8)','rgba(248,81,73,.6)'],borderColor:['#3fb950','#f85149'],borderWidth:2,hoverOffset:8}]},
+    options:{responsive:true,cutout:'68%',plugins:{legend:{position:'bottom',labels:{color:textColor,font:{size:12},padding:14}},tooltip:{...TT}}},
+    plugins:[{id:'c',afterDraw(c){const{ctx,chartArea:{width,height,left,top}}=c;const cx=left+width/2,cy=top+height/2;const p=c.data.datasets[0].data,tot=p[0]+p[1];const pc=tot?Math.round(p[0]/tot*1000)/10:0;ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 22px var(--mono,monospace)';ctx.fillStyle=isLight?'#24292f':'#e6edf3';ctx.fillText(pc+'%',cx,cy-8);ctx.font='11px sans-serif';ctx.fillStyle=textColor;ctx.fillText('éxito',cx,cy+12);ctx.restore();}}]});
+}
+
+/* ─── RANGOS CHART ───────────────────────────────────────────────── */
+let chartRangos=null;
+function buildRangos(pool){
+  const c=countsByRange(pool),data=[c['0'],c['25'],c['50'],c['75']];
+  if(chartRangos){chartRangos.data.datasets[0].data=data;chartRangos.update();return;}
+  chartRangos=new Chart(document.getElementById('chartRangos'),{type:'bar',
+    data:{labels:['0–24%','25–49%','50–74%','≥75%'],datasets:[{label:'Nº alumnos',data,backgroundColor:['rgba(248,81,73,.75)','rgba(210,153,34,.75)','rgba(88,166,255,.75)','rgba(63,185,80,.75)'],borderColor:['#f85149','#d29922','#58a6ff','#3fb950'],borderWidth:1.5,borderRadius:7,borderSkipped:false}]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:ctx=>` ${ctx.parsed.y} alumno${ctx.parsed.y!==1?'s':''}`}}},
+      scales:{y:{beginAtZero:true,ticks:{color:textColor,stepSize:1,precision:0},grid:{color:gridColor}},x:{ticks:{color:textColor},grid:{display:false}}}},
+    plugins:[{id:'rl',afterDatasetsDraw(c){const{ctx,data,scales:{x,y}}=c;data.datasets[0].data.forEach((v,i)=>{if(!v)return;ctx.save();ctx.font='bold 12px var(--mono,monospace)';ctx.fillStyle=isLight?'#24292f':'#e6edf3';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(v,x.getPixelForValue(i),y.getPixelForValue(v)-4);ctx.restore();});}}]});
+}
+
+/* ─── UPDATE ALL ─────────────────────────────────────────────────── */
+function updateAll(){
+  const pool=alumnosCurso();
+  updateKPIs(pool);updateRangePills(pool);buildBarChart(pool);buildDona(pool);buildRangos(pool);
+  histCurrentPage=1;renderHistTable();
+}
+document.querySelectorAll('.rng-chk').forEach(c=>c.addEventListener('change',updateAll));
+
+/* ─── GRÁFICO HISTÓRICO SNAPSHOTS ───────────────────────────────── */
+const snapLabels={{ snap_labels|tojson }},snapPct={{ snap_pct|tojson }},snapAvg={{ snap_avg|tojson }},snapTotal={{ snap_total|tojson }};
+let chartHistorial=null;
+function buildHistorialChart(){
+  const ctx=document.getElementById('chartHistorial');if(!ctx||!snapLabels.length)return;
+  const sE=document.getElementById('chk-exito').checked,sA=document.getElementById('chk-avg').checked,sT=document.getElementById('chk-total').checked;
+  const ds=[];
+  if(sE)ds.push({label:'Tasa de éxito (%)',data:snapPct,borderColor:'#3fb950',backgroundColor:'rgba(63,185,80,.10)',borderWidth:2.5,pointRadius:6,pointHoverRadius:8,pointBackgroundColor:'#3fb950',tension:.35,fill:true,yAxisID:'y'});
+  if(sA)ds.push({label:'Progreso promedio (%)',data:snapAvg,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.08)',borderWidth:2.5,pointRadius:6,pointHoverRadius:8,pointBackgroundColor:'#58a6ff',tension:.35,fill:true,yAxisID:'y'});
+  if(sT&&snapTotal.length)ds.push({label:'Total alumnos',data:snapTotal,borderColor:'#d29922',backgroundColor:'rgba(210,153,34,.08)',borderWidth:2,pointRadius:5,pointHoverRadius:7,pointBackgroundColor:'#d29922',borderDash:[5,4],tension:.35,fill:false,yAxisID:'y2'});
+  if(chartHistorial)chartHistorial.destroy();
+  chartHistorial=new Chart(ctx,{type:'line',data:{labels:snapLabels,datasets:ds},options:{responsive:true,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:true,position:'top',labels:{color:textColor,font:{size:12},padding:16,boxWidth:14}},tooltip:{...TT,callbacks:{label:ctx=>{const suf=ctx.dataset.yAxisID==='y2'?' alumnos':'%';return ` ${ctx.dataset.label}: ${ctx.parsed.y}${suf}`;}}}},
+    scales:{y:{beginAtZero:true,max:100,ticks:{color:textColor,callback:v=>v+'%'},grid:{color:gridColor},display:sE||sA},
+      y2:{beginAtZero:true,position:'right',ticks:{color:'#d29922',stepSize:1,precision:0},grid:{display:false},display:sT&&!!snapTotal.length},
+      x:{ticks:{color:textColor},grid:{display:false}}}}});
+}
+['chk-exito','chk-avg','chk-total'].forEach(id=>document.getElementById(id)?.addEventListener('change',buildHistorialChart));
+
+/* ─── GRÁFICO HISTORIAL AUTOMÁTICO ─────────────────────────────── */
+const HIST_LABELS={{ hist_labels|tojson }},HIST_ALUMNOS={{ hist_alumnos|tojson }},HIST_CURSOS={{ hist_cursos|tojson }};
+let chartHistAuto=null;
+function buildHistAuto(){
+  const ctx=document.getElementById('chartHistAuto');if(!ctx||!HIST_LABELS.length)return;
+  const sA=document.getElementById('chk-hist-alumnos')?.checked,sC=document.getElementById('chk-hist-cursos')?.checked;
+  const ds=[];
+  if(sA)ds.push({label:'Total alumnos',data:HIST_ALUMNOS,borderColor:'#58a6ff',backgroundColor:'rgba(88,166,255,.10)',borderWidth:2.5,pointRadius:5,pointHoverRadius:7,pointBackgroundColor:'#58a6ff',tension:.35,fill:true,yAxisID:'y'});
+  if(sC)ds.push({label:'Total cursos',data:HIST_CURSOS,borderColor:'#3fb950',backgroundColor:'rgba(63,185,80,.08)',borderWidth:2.5,pointRadius:5,pointHoverRadius:7,pointBackgroundColor:'#3fb950',tension:.35,fill:true,yAxisID:'y2'});
+  if(chartHistAuto)chartHistAuto.destroy();
+  chartHistAuto=new Chart(ctx,{type:'line',data:{labels:HIST_LABELS,datasets:ds},options:{responsive:true,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:true,position:'top',labels:{color:textColor,font:{size:12},padding:16,boxWidth:14}},tooltip:{...TT,callbacks:{label:ctx=>{const suf=ctx.dataset.yAxisID==='y2'?' cursos':' alumnos';return ` ${ctx.dataset.label}: ${ctx.parsed.y}${suf}`;}}}},
+    scales:{y:{beginAtZero:true,position:'left',ticks:{color:'#58a6ff',stepSize:1,precision:0},grid:{color:gridColor},display:sA},
+      y2:{beginAtZero:true,position:'right',ticks:{color:'#3fb950',stepSize:1,precision:0},grid:{display:false},display:sC},
+      x:{ticks:{color:textColor,maxRotation:45},grid:{display:false}}}}});
+}
+['chk-hist-alumnos','chk-hist-cursos'].forEach(id=>document.getElementById(id)?.addEventListener('change',buildHistAuto));
+
+/* ══════════════════════════════════════════════════════════════════
+   TABLA 2: HISTORIAL DE ALUMNOS — filtros + orden + paginación
+══════════════════════════════════════════════════════════════════════ */
+let histCurrentPage=1;
+const allHistRows=Array.from(document.querySelectorAll('#tbody-historial tr[data-search]'));
+
+function filteredHistRows(){
+  const q=(document.getElementById('buscador')?.value||'').toLowerCase().trim();
+  const est=document.getElementById('sel-estado-hist')?.value||'';
+  const rng=document.getElementById('sel-rango-hist')?.value||'';
+  return allHistRows.filter(tr=>{
+    const mQ=!q||tr.dataset.search.includes(q);
+    const mE=!est||tr.dataset.estado===est;
+    const mR=!rng||tr.dataset.rango===rng;
+    const mC=activeCurso==='__ALL__'||tr.dataset.curso===activeCurso;
+    return mQ&&mE&&mR&&mC;
+  });
+}
+function sortHistRows(rows){
+  const o=document.getElementById('sel-orden-hist')?.value||'prog_desc';
+  return [...rows].sort((a,b)=>{
+    switch(o){
+      case 'prog_desc':  return parseFloat(b.dataset.prog)-parseFloat(a.dataset.prog);
+      case 'prog_asc':   return parseFloat(a.dataset.prog)-parseFloat(b.dataset.prog);
+      case 'nombre_asc': return a.dataset.nombre.localeCompare(b.dataset.nombre);
+      case 'nombre_desc':return b.dataset.nombre.localeCompare(a.dataset.nombre);
+      case 'curso_asc':  return a.dataset.curso.localeCompare(b.dataset.curso);
+      case 'exam_desc':  return parseFloat(b.dataset.exam)-parseFloat(a.dataset.exam);
+      case 'fecha_desc': return (b.dataset.fecha||'').localeCompare(a.dataset.fecha||'');
+      default:return 0;
+    }
+  });
+}
+function renderHistTable(){
+  const tbody=document.getElementById('tbody-historial');
+  const pp=parseInt(document.getElementById('sel-pp-hist')?.value||25);
+  const filtered=filteredHistRows(),sorted=sortHistRows(filtered),total=sorted.length;
+  const pages=pp>=9000?1:Math.ceil(total/pp)||1;
+  if(histCurrentPage>pages)histCurrentPage=pages;
+  const start=pp>=9000?0:(histCurrentPage-1)*pp,end=pp>=9000?total:Math.min(start+pp,total);
+  allHistRows.forEach(tr=>{tr.style.display='none';});
+  sorted.forEach((tr,i)=>{tbody.appendChild(tr);tr.style.display=(i>=start&&i<end)?'':'none';});
+  const emptyRow=document.getElementById('hist-empty-row');if(emptyRow)emptyRow.style.display='none';
+  document.getElementById('no-results').style.display=(total===0&&allHistRows.length>0)?'':'none';
+  document.getElementById('lbl-table-count').textContent=total+' registros';
+  const info=(pp>=9000||pages<=1)?`${total} registro${total!==1?'s':''}`:`Mostrando ${start+1}–${end} de ${total} registro${total!==1?'s':''}`;
+  document.getElementById('pag-hist-info-top').textContent=info;
+  document.getElementById('pag-hist-info-bot').textContent=info;
+  const showP=pages>1&&pp<9000;
+  document.getElementById('pag-hist-top-wrap').style.display=showP?'':'none';
+  document.getElementById('pag-hist-bot-wrap').style.display=showP?'':'none';
+  if(showP){
+    const go=p=>{histCurrentPage=p;renderHistTable();document.getElementById('tabla-historial').scrollIntoView({behavior:'smooth',block:'start'});};
+    buildPagUL(document.getElementById('pag-hist-top'),histCurrentPage,pages,go);
+    buildPagUL(document.getElementById('pag-hist-bot'),histCurrentPage,pages,go);
+  }
+}
+function limpiarHist(){
+  document.getElementById('buscador').value='';
+  document.getElementById('sel-estado-hist').value='';
+  document.getElementById('sel-rango-hist').value='';
+  document.getElementById('sel-orden-hist').value='prog_desc';
+  document.getElementById('sel-pp-hist').value='25';
+  histCurrentPage=1;renderHistTable();
+}
+document.getElementById('buscador')?.addEventListener('input',()=>{histCurrentPage=1;renderHistTable();});
+document.getElementById('sel-estado-hist')?.addEventListener('change',()=>{histCurrentPage=1;renderHistTable();});
+document.getElementById('sel-rango-hist')?.addEventListener('change',()=>{histCurrentPage=1;renderHistTable();});
+document.getElementById('sel-orden-hist')?.addEventListener('change',()=>{histCurrentPage=1;renderHistTable();});
+document.getElementById('sel-pp-hist')?.addEventListener('change',()=>{histCurrentPage=1;renderHistTable();});
+
+/* ══════════════════════════════════════════════════════════════════
+   TABLA 1: ALUMNOS POR N.º DE CURSOS — filtros + orden + paginación
+══════════════════════════════════════════════════════════════════════ */
+(function(){
+  const grouped={};
+  ALL_ALUMNOS.forEach(a=>{const k=a.nombre.trim().toLowerCase();if(!grouped[k])grouped[k]={nombre:a.nombre,cursos:new Set(),registros:[]};if(a.curso)grouped[k].cursos.add(a.curso);grouped[k].registros.push(a);});
+  const allRows=Object.values(grouped).map(g=>{
+    const recs=g.registros,nC=g.cursos.size||1;
+    const avg=Math.round(recs.reduce((s,r)=>s+r.progreso,0)/recs.length*10)/10;
+    const sup=recs.filter(r=>r.supera_75===1).length,ex=recs.reduce((s,r)=>s+(r.examenes||0),0);
+    return{nombre:g.nombre,nCursos:nC,cursos:[...g.cursos],avgProg:avg,superan:sup,examenes:ex,total:recs.length};
+  });
+  // KPIs
+  const nc1=allRows.filter(r=>r.nCursos===1).length,nc2=allRows.filter(r=>r.nCursos===2).length,nc3=allRows.filter(r=>r.nCursos>=3).length;
+  const avgNC=allRows.length?Math.round(allRows.reduce((s,r)=>s+r.nCursos,0)/allRows.length*10)/10:0;
+  ['kpi-nc-1','kpi-nc-2','kpi-nc-3','kpi-nc-avg'].forEach((id,i)=>document.getElementById(id).textContent=[nc1,nc2,nc3,avgNC][i]);
+  // Pills
+  const allCounts=[...new Set(allRows.map(r=>r.nCursos))].sort((a,b)=>a-b),activeCounts=new Set(allCounts);
+  const pillsEl=document.getElementById('curso-count-pills');
+  allCounts.forEach(n=>{
+    const pill=document.createElement('button');pill.className='course-tab active';pill.dataset.n=n;
+    pill.innerHTML=`${n} curso${n!==1?'s':''} <span class="ct-badge">${allRows.filter(r=>r.nCursos===n).length}</span>`;
+    pill.addEventListener('click',()=>{activeCounts.has(n)?activeCounts.delete(n):activeCounts.add(n);pill.classList.toggle('active');ncPage=1;renderNC();});
+    pillsEl.appendChild(pill);
+  });
+  let ncPage=1;
+  function sortNC(rows){const o=document.getElementById('sel-orden-nc')?.value||'nc_desc';return[...rows].sort((a,b)=>{switch(o){case 'nc_desc':return b.nCursos-a.nCursos||a.nombre.localeCompare(b.nombre);case 'nc_asc':return a.nCursos-b.nCursos||a.nombre.localeCompare(b.nombre);case 'nombre_asc':return a.nombre.localeCompare(b.nombre);case 'prog_desc':return b.avgProg-a.avgProg;case 'exam_desc':return b.examenes-a.examenes;default:return 0;}});}
+  function renderNC(){
+    const q=(document.getElementById('buscador-cursos')?.value||'').toLowerCase().trim();
+    const filtered=allRows.filter(r=>activeCounts.has(r.nCursos)&&(!q||r.nombre.toLowerCase().includes(q)||r.cursos.join(' ').toLowerCase().includes(q)));
+    const sorted=sortNC(filtered),total=sorted.length;
+    const pp=parseInt(document.getElementById('sel-pp-nc')?.value||20);
+    const pages=pp>=9000?1:Math.ceil(total/pp)||1;if(ncPage>pages)ncPage=pages;
+    const start=pp>=9000?0:(ncPage-1)*pp,end=pp>=9000?total:Math.min(start+pp,total);
+    const page=sorted.slice(start,end);
+    document.getElementById('lbl-cursos-count').textContent=total+' alumnos';
+    const tbody=document.getElementById('tbody-por-cursos'),noR=document.getElementById('no-results-cursos');
+    const ncCol=n=>n>=3?'var(--accent)':n===2?'var(--amber)':'var(--text-muted)';
+    if(!total){tbody.innerHTML='';noR.style.display='block';}
+    else{
+      noR.style.display='none';
+      tbody.innerHTML=page.map(r=>{
+        const cb=r.cursos.map(c=>`<span class="badge-g badge-cat" style="margin:.1rem;">${c}</span>`).join('');
+        const pc=r.avgProg>=75?'var(--accent)':r.avgProg>=50?'var(--blue)':r.avgProg>=25?'var(--amber)':'var(--red)';
+        return `<tr>
+          <td style="font-weight:600;">${r.nombre}</td>
+          <td style="text-align:center;"><span style="font-family:var(--mono);font-size:1rem;font-weight:800;color:${ncCol(r.nCursos)};">${r.nCursos}</span></td>
+          <td>${cb||'<span style="color:var(--text-muted)">—</span>'}</td>
+          <td style="text-align:center;"><div style="display:flex;align-items:center;gap:.5rem;justify-content:center;"><div style="width:55px;height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;"><div style="height:100%;width:${Math.min(r.avgProg,100)}%;background:${pc};border-radius:99px;"></div></div><span style="font-family:var(--mono);font-size:.78rem;">${r.avgProg}%</span></div></td>
+          <td style="text-align:center;font-family:var(--mono);"><span class="badge-g ${r.superan===r.total?'badge-done':r.superan>0?'badge-pending':'badge-cat'}">${r.superan}/${r.total}</span></td>
+          <td style="text-align:center;font-family:var(--mono);font-size:.85rem;">${r.examenes}</td>
+        </tr>`;
+      }).join('');
+    }
+    const info=(pp>=9000||pages<=1)?`${total} alumno${total!==1?'s':''}`:`Mostrando ${start+1}–${end} de ${total} alumno${total!==1?'s':''}`;
+    document.getElementById('pag-nc-info').textContent=info;
+    const showP=pages>1&&pp<9000;document.getElementById('pag-nc-wrap').style.display=showP?'':'none';
+    if(showP)buildPagUL(document.getElementById('pag-nc-controls'),ncPage,pages,p=>{ncPage=p;renderNC();});
+  }
+  window.limpiarNC=function(){
+    document.getElementById('buscador-cursos').value='';
+    document.getElementById('sel-orden-nc').value='nc_desc';
+    document.getElementById('sel-pp-nc').value='20';
+    allCounts.forEach(n=>activeCounts.add(n));
+    pillsEl.querySelectorAll('.course-tab').forEach(p=>p.classList.add('active'));
+    ncPage=1;renderNC();
+  };
+  document.getElementById('buscador-cursos')?.addEventListener('input',()=>{ncPage=1;renderNC();});
+  document.getElementById('sel-orden-nc')?.addEventListener('change',()=>{ncPage=1;renderNC();});
+  document.getElementById('sel-pp-nc')?.addEventListener('change',()=>{ncPage=1;renderNC();});
+  renderNC();
+})();
+
+/* ─── ARRANQUE ───────────────────────────────────────────────────── */
+updateAll();
+buildHistorialChart();
+buildHistAuto();
+renderHistTable();
+</script>
+{% endblock %}

@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Admin — Gestor{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <h4 style="font-weight:700; margin:0;">⚙ Panel Admin</h4>
+  <span style="font-family:var(--mono); font-size:.78rem; color:var(--text-muted);">
+    {{ total }} tarea{{ 's' if total != 1 else '' }} encontrada{{ 's' if total != 1 else '' }}
+  </span>
+</div>
+
+<!-- ── KPI row ─────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card blue">
+      <div class="stat-label">Total filtrado</div>
+      <div class="stat-value">{{ total }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card green">
+      <div class="stat-label">Completadas</div>
+      <div class="stat-value" style="color:var(--accent);">
+        {{ tareas | selectattr(4, 'equalto', 1) | list | length if tareas else 0 }}
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card amber">
+      <div class="stat-label">Pendientes</div>
+      <div class="stat-value" style="color:var(--amber);">
+        {{ tareas | selectattr(4, 'equalto', 0) | list | length if tareas else 0 }}
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card red">
+      <div class="stat-label">Página</div>
+      <div class="stat-value" style="font-size:1.5rem;">{{ page }}/{{ total_pages }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Filters ────────────────────────── -->
+<div class="gcard mb-4">
+  <div class="gcard-header">
+    <span style="color:var(--text-muted)">⊟</span>
+    <span class="gcard-title">Filtros</span>
+  </div>
+  <div class="gcard-body">
+    <div class="row g-2 align-items-end">
+
+      <!-- Client-side search -->
+      <div class="col-sm-6 col-md-3">
+        <label class="form-label">Búsqueda rápida</label>
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="buscador" class="form-control" placeholder="Texto libre…">
+        </div>
+      </div>
+
+      <!-- State filter (server) -->
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label">Estado</label>
+        <select id="sel-estado" class="form-select">
+          <option value="">Todos</option>
+          <option value="Completada" {% if filtro_est=='Completada' %}selected{% endif %}>Completada</option>
+          <option value="Pendiente"  {% if filtro_est=='Pendiente'  %}selected{% endif %}>Pendiente</option>
+        </select>
+      </div>
+
+      <!-- Category filter (server) -->
+      <div class="col-sm-6 col-md-3">
+        <label class="form-label">Categoría</label>
+        <select id="sel-cat" class="form-select">
+          <option value="">Todas</option>
+          {% for cat in categorias %}
+          <option value="{{ cat }}" {% if filtro_cat==cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Code filter (client) -->
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label">Código</label>
+        <input type="text" id="fil-codigo" class="form-control" placeholder="Filtrar…">
+      </div>
+
+      <div class="col-md-2 d-flex gap-2">
+        <button onclick="applyServerFilters()" class="btn btn-g-primary flex-fill">Filtrar</button>
+        <a href="/admin" class="btn btn-g-ghost">✕</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Table ──────────────────────────── -->
+<div class="gcard">
+  <div class="gcard-body p-0">
+    <div class="table-responsive">
+      <table class="gtable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Código</th>
+            <th>Descripción</th>
+            <th>Categoría</th>
+            <th>Fecha</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tareas %}
+          {#
+            t[0]=id  t[1]=descripcion  t[2]=categoria
+            t[3]=fecha  t[4]=completada  t[5]=codigo  t[6]=usuario_id
+          #}
+          <tr class="{{ 'row-done' if t[4]==1 else '' }}"
+              data-search="{{ t[0] }} {{ (t[5] or '') }} {{ t[1] }} {{ (t[2] or '') }}"
+              data-codigo="{{ (t[5] or '') | lower }}">
+
+            <td data-label="ID" style="font-family:var(--mono); font-size:.75rem; color:var(--text-muted);">
+              #{{ t[0] }}
+            </td>
+            <td data-label="Código" style="font-family:var(--mono); font-size:.78rem; color:var(--text-muted);">
+              {{ t[5] if t[5] else '—' }}
+            </td>
+            <td data-label="Descripción">{{ t[1] }}</td>
+            <td data-label="Categoría">
+              <span class="badge-g badge-cat">{{ t[2] if t[2] else 'General' }}</span>
+            </td>
+            <td data-label="Fecha" style="font-family:var(--mono); font-size:.78rem; white-space:nowrap;">
+              {{ t[3] if t[3] else '—' }}
+            </td>
+            <td data-label="Estado">
+              {% if t[4]==1 %}
+                <span class="badge-g badge-done">✔ Completada</span>
+              {% else %}
+                <span class="badge-g badge-pending">● Pendiente</span>
+              {% endif %}
+            </td>
+            <td data-label="Acciones" style="white-space:nowrap;">
+              {% if t[4]==0 %}
+                <a href="/completar/{{ t[0] }}" class="btn btn-g-success btn-sm">✔</a>
+              {% else %}
+                <span class="btn btn-g-ghost btn-sm" style="cursor:default; opacity:.4;">✔</span>
+              {% endif %}
+              <a href="/editar/{{ t[0] }}" class="btn btn-g-warning btn-sm">✏</a>
+              <a href="/eliminar/{{ t[0] }}" class="btn btn-g-danger btn-sm"
+                 onclick="return confirm('¿Eliminar esta tarea?')">🗑</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" style="text-align:center; padding:3rem; color:var(--text-muted);">
+              <div style="font-size:1.8rem; margin-bottom:.5rem;">🔍</div>
+              No hay tareas con los filtros seleccionados.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div id="no-results" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
+        <div style="font-size:1.8rem; margin-bottom:.5rem;">🔍</div>
+        Sin resultados para la búsqueda.
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <div class="py-3 px-3 border-top" style="border-color:var(--border)!important;">
+      <ul class="gpagination">
+        <li class="{{ 'disabled' if page<=1 else '' }}">
+          <a class="gpage-link" href="?page={{ page-1 }}&categoria={{ filtro_cat }}&estado={{ filtro_est }}">← Ant</a>
+        </li>
+        {% for p in range(1, total_pages+1) %}
+        <li class="{{ 'active' if p==page else '' }}">
+          <a class="gpage-link" href="?page={{ p }}&categoria={{ filtro_cat }}&estado={{ filtro_est }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+        <li class="{{ 'disabled' if page>=total_pages else '' }}">
+          <a class="gpage-link" href="?page={{ page+1 }}&categoria={{ filtro_cat }}&estado={{ filtro_est }}">Sig →</a>
+        </li>
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Server-side filter (category + state) ──
+  function applyServerFilters(){
+    const estado = document.getElementById('sel-estado').value;
+    const cat    = document.getElementById('sel-cat').value;
+    const url    = new URL(window.location.href);
+    estado ? url.searchParams.set('estado', estado) : url.searchParams.delete('estado');
+    cat    ? url.searchParams.set('categoria', cat)  : url.searchParams.delete('categoria');
+    url.searchParams.set('page', 1);
+    window.location.href = url.toString();
+  }
+  // Trigger on select change too
+  document.getElementById('sel-estado').addEventListener('change', applyServerFilters);
+  document.getElementById('sel-cat').addEventListener('change', applyServerFilters);
+
+  // ── Client-side search (text + code) ──
+  function clientFilter(){
+    const q    = document.getElementById('buscador').value.toLowerCase().trim();
+    const cod  = document.getElementById('fil-codigo').value.toLowerCase().trim();
+    const rows = document.querySelectorAll('tbody tr[data-search]');
+    let vis = 0;
+    rows.forEach(tr => {
+      const matchQ   = !q   || tr.dataset.search.toLowerCase().includes(q);
+      const matchCod = !cod || tr.dataset.codigo.includes(cod);
+      const show = matchQ && matchCod;
+      tr.style.display = show ? '' : 'none';
+      if(show) vis++;
+    });
+    document.getElementById('no-results').style.display = (vis===0 && (q||cod)) ? '' : 'none';
+  }
+  document.getElementById('buscador').addEventListener('input', clientFilter);
+  document.getElementById('fil-codigo').addEventListener('input', clientFilter);
+</script>
+{% endblock %}

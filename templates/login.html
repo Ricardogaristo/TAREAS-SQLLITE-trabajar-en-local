@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — Sistema de Gestión Ricardo Garisto</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --bg2:     #161b22;
+      --bg3:     #21262d;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #7d8590;
+      --dim:     #484f58;
+      --accent:  #3fb950;
+      --aglow:   rgba(63,185,80,.2);
+      --red:     #f85149;
+      --mono:    'JetBrains Mono', monospace;
+      --font:    'Outfit', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+      position: relative; overflow: hidden;
+    }
+
+    /* Animated background */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(48,54,61,.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(48,54,61,.4) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      width: 500px; height: 500px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(63,185,80,.06) 0%, transparent 70%);
+      top: -100px; left: -100px;
+      pointer-events: none;
+    }
+
+    .login-wrap {
+      position: relative; z-index: 1;
+      width: 100%; max-width: 400px;
+    }
+
+    .brand {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .brand-logo {
+      width: 48px; height: 48px;
+      background: var(--accent);
+      border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      margin-bottom: .75rem;
+      box-shadow: 0 0 24px var(--aglow);
+    }
+    .brand-name {
+      font-family: var(--mono);
+      font-size: .85rem;
+      color: var(--muted);
+      letter-spacing: .1em;
+    }
+
+    .login-card {
+      background: #e9e7e7;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    }
+    .login-card h5 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+      color: var(--text);
+    }
+
+    .form-label {
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      margin-bottom: .35rem;
+    }
+    .form-control {
+      background: #bfd0e7;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: .9rem;
+      padding: .6rem .9rem;
+      width: 100%;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    .form-control:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--aglow);
+      background: var(--bg3);
+      color: var(--text);
+    }
+    .form-control::placeholder { color: var(--dim); }
+
+    .btn-login {
+      width: 100%;
+      padding: .65rem;
+      background: var(--accent);
+      color: #0d1117;
+      font-family: var(--font);
+      font-weight: 700;
+      font-size: .9rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background .18s, box-shadow .18s, transform .1s;
+      margin-top: .5rem;
+    }
+    .btn-login:hover {
+      background: #4dc663;
+      box-shadow: 0 4px 16px var(--aglow);
+      transform: translateY(-1px);
+    }
+    .btn-login:active { transform: translateY(0); }
+
+    .error-box {
+      background: rgba(248,81,73,.12);
+      border: 1px solid rgba(248,81,73,.4);
+      border-radius: 8px;
+      color: var(--red);
+      font-size: .85rem;
+      padding: .65rem .9rem;
+      margin-bottom: 1.25rem;
+      display: flex; align-items: center; gap: .5rem;
+    }
+
+    .login-footer {
+      text-align: center;
+      margin-top: 1.25rem;
+      font-size: .83rem;
+      color: var(--muted);
+    }
+    .login-footer a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .login-footer a:hover { text-decoration: underline; }
+
+    .copy {
+      text-align: center;
+      margin-top: 2rem;
+      font-family: var(--mono);
+      font-size: .72rem;
+      color: var(--dim);
+    }
+  </style>
+</head>
+<body>
+
+<div class="card login-card">
+    <div class="login-header">
+        <h4>🔐 Iniciar Sesión</h4>
+        <small>Gestor de Tareas</small>
+    </div>
+
+    <div class="card-body p-4">
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label">Usuario</label>
+                <input type="text" name="username" class="form-control" placeholder="Ingrese usuario" required>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Contraseña</label>
+                <input type="password" name="password" class="form-control" placeholder="Ingrese contraseña" required>
+            </div>
+
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary">
+                    Entrar
+                </button>
+            </div>
+        </form>
+    </div>
+    <p class="mt-3 text-center">
+    ¿No tienes cuenta? <a href="/registro">Regístrate aquí</a>
+</p>
+    <div class="card-footer text-center">
+        <small class="text-muted">© 2026 Sistema de Gestión Ricardo Garisto</small>
+    </div>
+</div>
+
+</body>
+</html>

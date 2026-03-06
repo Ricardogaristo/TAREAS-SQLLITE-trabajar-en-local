@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+{% block title %}Alarmas del Día — Formación{% endblock %}
+
+{% block content %}
+
+{# ── Agrupar alarmas por prioridad para los KPIs #}
+{% set criticas     = alarmas | selectattr('prioridad', 'equalto', 1) | list %}
+{% set urgentes     = alarmas | selectattr('prioridad', 'equalto', 2) | list %}
+{% set informativas = alarmas | selectattr('prioridad', 'equalto', 3) | list %}
+
+{# ── STICKY HEADER ── #}
+<div class="sticky-top-bar">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div>
+      <h4 style="font-weight:700; margin:0;">🔔 Alarmas del Tutor</h4>
+      <div style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted); margin-top:.15rem;">
+        {{ hoy_str }}
+        {% if pendientes > 0 %}
+          · <span style="color:var(--red); font-weight:700;">{{ pendientes }} pendiente{{ 's' if pendientes != 1 else '' }}</span>
+        {% else %}
+          · <span style="color:var(--accent);">✔ Todo al día</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('formacion.formacion_dashboard') }}" class="btn btn-g-ghost btn-sm">◈ Dashboard</a>
+      <a href="{{ url_for('formacion.formacion') }}" class="btn btn-g-ghost btn-sm">← Formación</a>
+    </div>
+  </div>
+</div>
+
+{# ── KPI STRIP ── #}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="stat-card blue">
+      <div class="stat-label">Tareas hoy</div>
+      <div class="stat-value">{{ total }}</div>
+      <div style="font-size:.75rem; color:var(--text-muted);">alarmas activas</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card red">
+      <div class="stat-label">🔴 Críticas</div>
+      <div class="stat-value" style="color:var(--red);">{{ criticas | length }}</div>
+      <div style="font-size:.75rem; color:var(--text-muted);">acción inmediata</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card amber">
+      <div class="stat-label">🟡 Urgentes</div>
+      <div class="stat-value" style="color:var(--amber);">{{ urgentes | length }}</div>
+      <div style="font-size:.75rem; color:var(--text-muted);">seguimiento hoy</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    {% set pct  = ((hechas / total * 100) | round(0) | int) if total else 0 %}
+    {% set circ = 2 * 3.14159 * 18 %}
+    {% set offset = circ * (1 - pct / 100) %}
+    <div class="stat-card green" style="display:flex; align-items:center; gap:.6rem;">
+      <div>
+        <div class="stat-label">Completadas</div>
+        <div class="stat-value" style="color:var(--accent); font-size:1.5rem;">{{ pct }}%</div>
+        <div style="font-size:.75rem; color:var(--text-muted);">{{ hechas }}/{{ total }} tareas</div>
+      </div>
+      <svg class="ring-svg ms-auto" viewBox="0 0 46 46">
+        <circle class="ring-bg" cx="23" cy="23" r="18"/>
+        <circle class="ring-fg" cx="23" cy="23" r="18"
+          stroke="{{ '#3fb950' if pct==100 else ('#d29922' if pct>0 else '#f85149') }}"
+          stroke-dasharray="{{ circ }}"
+          stroke-dashoffset="{{ offset }}"/>
+      </svg>
+    </div>
+  </div>
+</div>
+
+{% if total == 0 %}
+<div class="gcard">
+  <div class="gcard-body" style="text-align:center; padding:3.5rem 1rem;">
+    <div style="font-size:3.5rem; margin-bottom:.7rem;">🎉</div>
+    <h5 style="font-weight:700; margin-bottom:.4rem;">¡Sin tareas pendientes hoy!</h5>
+    <p style="color:var(--text-muted); font-size:.88rem;">No hay alarmas activas. Todos los alumnos están en orden.</p>
+    <a href="{{ url_for('formacion.formacion') }}" class="btn btn-g-primary mt-2">← Volver a Formación</a>
+  </div>
+</div>
+
+{% else %}
+
+{# ── BARRA DE CONTROL: filtros + búsqueda + orden + página ── #}
+<div class="gcard mb-3">
+  <div class="gcard-body" style="padding:1rem 1.25rem;">
+    <div class="row g-2 align-items-end">
+
+      {# Búsqueda libre #}
+      <div class="col-12 col-md-4">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="buscador" class="form-control"
+                 placeholder="Buscar alumno, curso, título…">
+        </div>
+      </div>
+
+      {# Filtro prioridad / estado #}
+      <div class="col-6 col-md-2">
+        <select id="sel-filtro" class="form-select">
+          <option value="todas">Todas ({{ total }})</option>
+          <option value="pendientes">⏳ Pendientes ({{ pendientes }})</option>
+          <option value="completadas">✅ Hechas ({{ hechas }})</option>
+          <option value="1">🔴 Crítico ({{ criticas|length }})</option>
+          <option value="2">🟡 Urgente ({{ urgentes|length }})</option>
+          <option value="3">🔵 Info ({{ informativas|length }})</option>
+        </select>
+      </div>
+
+      {# Orden #}
+      <div class="col-6 col-md-2">
+        <select id="sel-orden" class="form-select">
+          <option value="prioridad_asc">🔴 Prioridad (alta→baja)</option>
+          <option value="prioridad_desc">🔵 Prioridad (baja→alta)</option>
+          <option value="dias_asc">📅 Días restantes ↑</option>
+          <option value="dias_desc">📅 Días restantes ↓</option>
+          <option value="alumno_asc">👤 Alumno A→Z</option>
+          <option value="alumno_desc">👤 Alumno Z→A</option>
+          <option value="curso_asc">📚 Curso A→Z</option>
+        </select>
+      </div>
+
+      {# Por página #}
+      <div class="col-6 col-md-2">
+        <select id="sel-perpage" class="form-select">
+          <option value="10">10 por página</option>
+          <option value="20" selected>20 por página</option>
+          <option value="50">50 por página</option>
+          <option value="9999">Ver todas</option>
+        </select>
+      </div>
+
+      {# Limpiar #}
+      <div class="col-6 col-md-2">
+        <button onclick="limpiarFiltros()" class="btn btn-g-ghost w-100">✕ Limpiar</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{# ── Info de resultados + paginación superior ── #}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2" id="pag-top-wrap" style="display:none!important;">
+  <span id="pag-info-top" style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted);"></span>
+  <ul class="gpagination" id="pag-top" style="margin:0;"></ul>
+</div>
+
+{# ── CONTENEDOR ÚNICO DE TARJETAS ── #}
+<div id="alarmas-container">
+
+  {# Macro para evitar repetir HTML #}
+  {% macro card(a) %}
+  <div class="alarma-card {% if a.completada %}completada{% endif %}"
+       data-prioridad="{{ a.prioridad }}"
+       data-completada="{{ '1' if a.completada else '0' }}"
+       data-alumno="{{ a.alumno_nombre | lower }}"
+       data-curso="{{ a.curso | lower }}"
+       data-titulo="{{ a.titulo | lower }}"
+       data-dias="{{ a.dias_restantes if a.dias_restantes is not none else 9999 }}"
+       data-search="{{ a.alumno_nombre | lower }} {{ a.curso | lower }} {{ a.titulo | lower }} {{ a.descripcion | lower }}">
+    <div class="alarma-inner">
+      <div class="alarma-stripe stripe-{{ a.prioridad }}"></div>
+      <div class="alarma-body">
+        <div class="alarma-titulo">{{ a.emoji }} {{ a.titulo }}</div>
+        <div class="alarma-desc">{{ a.descripcion }}</div>
+        <div class="alarma-accion">→ {{ a.accion }}</div>
+        <div class="alarma-meta">
+          <span class="badge-g badge-cat" style="font-size:.67rem;">{{ a.curso }}</span>
+          {% if a.alumno_id %}
+            <span style="font-size:.75rem; font-weight:600;">👤 {{ a.alumno_nombre }}</span>
+          {% else %}
+            <span style="font-size:.75rem; font-weight:600; color:var(--text-muted);">📚 {{ a.alumno_nombre }}</span>
+          {% endif %}
+          {% if a.dias_restantes is not none %}
+            <span style="font-family:var(--mono); font-size:.71rem;
+                  color:{% if a.dias_restantes < 0 %}var(--red){% elif a.dias_restantes <= 7 %}var(--amber){% else %}var(--text-muted){% endif %};">
+              {% if a.dias_restantes < 0 %}
+                🔴 Venció hace {{ a.dias_restantes | abs }} día{{ 's' if (a.dias_restantes | abs) != 1 else '' }}
+              {% elif a.dias_restantes == 0 %}
+                🟡 Vence hoy
+              {% else %}
+                📅 {{ a.dias_restantes }} día{{ 's' if a.dias_restantes != 1 else '' }} restante{{ 's' if a.dias_restantes != 1 else '' }}
+              {% endif %}
+            </span>
+          {% endif %}
+          {% if a.telefono %}
+            <span style="font-size:.7rem; color:var(--text-muted); font-family:var(--mono);">📱 {{ a.telefono }}</span>
+          {% elif a.alumno_id and a.tipo != 'sin_telefono' %}
+            <span style="font-size:.7rem; color:var(--red);">⚠ sin teléfono</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="alarma-actions">
+        {% if a.wa_link %}
+          <a href="{{ a.wa_link }}" target="_blank"
+             class="btn btn-g-success btn-sm"
+             style="white-space:nowrap; font-size:.76rem;">💬 Enviar WA</a>
+        {% endif %}
+        {% if a.alumno_id and not a.wa_link and a.telefono == '' %}
+          <a href="{{ url_for('formacion.formacion') }}"
+             class="btn btn-g-ghost btn-sm"
+             style="font-size:.74rem; white-space:nowrap;">✏ Registrar tel.</a>
+        {% endif %}
+        <form method="POST" action="{{ url_for('formacion.alarma_completar') }}">
+          <input type="hidden" name="clave" value="{{ a.clave }}">
+          {% if a.completada %}
+            <input type="hidden" name="accion" value="deshacer">
+            <button type="submit" class="btn btn-g-ghost btn-sm"
+                    style="white-space:nowrap; font-size:.74rem;">↩ Deshacer</button>
+          {% else %}
+            <input type="hidden" name="accion" value="completar">
+            <button type="submit" class="btn btn-g-primary btn-sm"
+                    style="white-space:nowrap; font-size:.74rem;">✔ Listo</button>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endmacro %}
+
+  {# Renderizar TODAS las tarjetas en orden natural (prioridad) #}
+  {% for a in criticas %}{{ card(a) }}{% endfor %}
+  {% for a in urgentes %}{{ card(a) }}{% endfor %}
+  {% for a in informativas %}{{ card(a) }}{% endfor %}
+
+</div>{# /alarmas-container #}
+
+{# Sin resultados #}
+<div id="no-results" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
+  <div style="font-size:1.8rem; margin-bottom:.4rem;">🔍</div>
+  No hay alarmas que coincidan con los filtros aplicados.
+</div>
+
+{# Paginación inferior #}
+<div id="pag-bottom-wrap" style="display:none; margin-top:1rem;">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <span id="pag-info-bot" style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted);"></span>
+    <ul class="gpagination" id="pag-bottom" style="margin:0;"></ul>
+  </div>
+</div>
+
+{% endif %}{# end if total > 0 #}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  CONTROL: búsqueda + filtro + orden + paginación
+// ════════════════════════════════════════════════════════════════════
+
+const inputBuscar  = document.getElementById('buscador');
+const selFiltro    = document.getElementById('sel-filtro');
+const selOrden     = document.getElementById('sel-orden');
+const selPerPage   = document.getElementById('sel-perpage');
+const container    = document.getElementById('alarmas-container');
+const noResults    = document.getElementById('no-results');
+const pagTopWrap   = document.getElementById('pag-top-wrap');
+const pagBotWrap   = document.getElementById('pag-bottom-wrap');
+const pagInfoTop   = document.getElementById('pag-info-top');
+const pagInfoBot   = document.getElementById('pag-info-bot');
+const pagTop       = document.getElementById('pag-top');
+const pagBot       = document.getElementById('pag-bottom');
+
+if (!container) {
+  // total === 0, no hay nada que controlar
+  void 0;
+} else {
+
+const allCards = Array.from(container.querySelectorAll('.alarma-card'));
+let currentPage = 1;
+
+// ── Filtrar ──────────────────────────────────────────────────────
+function filteredCards() {
+  const q       = inputBuscar.value.toLowerCase().trim();
+  const filtro  = selFiltro.value;
+
+  return allCards.filter(card => {
+    // Búsqueda libre
+    const matchQ = !q || card.dataset.search.includes(q);
+
+    // Filtro de pestaña
+    let matchF = true;
+    if      (filtro === 'pendientes')  matchF = card.dataset.completada === '0';
+    else if (filtro === 'completadas') matchF = card.dataset.completada === '1';
+    else if (filtro === '1' || filtro === '2' || filtro === '3')
+                                        matchF = card.dataset.prioridad === filtro;
+    // 'todas' → matchF = true por defecto
+
+    return matchQ && matchF;
+  });
+}
+
+// ── Ordenar ──────────────────────────────────────────────────────
+function sortCards(cards) {
+  const orden = selOrden.value;
+  return [...cards].sort((a, b) => {
+    switch (orden) {
+      case 'prioridad_asc':
+        return parseInt(a.dataset.prioridad) - parseInt(b.dataset.prioridad);
+      case 'prioridad_desc':
+        return parseInt(b.dataset.prioridad) - parseInt(a.dataset.prioridad);
+      case 'dias_asc':
+        return parseInt(a.dataset.dias) - parseInt(b.dataset.dias);
+      case 'dias_desc':
+        return parseInt(b.dataset.dias) - parseInt(a.dataset.dias);
+      case 'alumno_asc':
+        return a.dataset.alumno.localeCompare(b.dataset.alumno);
+      case 'alumno_desc':
+        return b.dataset.alumno.localeCompare(a.dataset.alumno);
+      case 'curso_asc':
+        return a.dataset.curso.localeCompare(b.dataset.curso);
+      default:
+        return 0;
+    }
+  });
+}
+
+// ── Renderizar ───────────────────────────────────────────────────
+function render() {
+  const perPage = parseInt(selPerPage.value);
+  const filtered = filteredCards();
+  const sorted   = sortCards(filtered);
+  const total    = sorted.length;
+  const pages    = perPage >= 9000 ? 1 : Math.ceil(total / perPage) || 1;
+
+  if (currentPage > pages) currentPage = pages;
+
+  const start = perPage >= 9000 ? 0     : (currentPage - 1) * perPage;
+  const end   = perPage >= 9000 ? total : Math.min(start + perPage, total);
+
+  // Ocultar todas
+  allCards.forEach(c => { c.style.display = 'none'; });
+
+  // Reordenar en el DOM y mostrar las de la página
+  sorted.forEach((card, idx) => {
+    container.appendChild(card);          // mueve al final (mantiene orden)
+    card.style.display = (idx >= start && idx < end) ? '' : 'none';
+  });
+
+  // Sin resultados
+  noResults.style.display = (total === 0) ? '' : 'none';
+
+  // Info
+  const infoText = perPage >= 9000 || pages <= 1
+    ? `${total} alarma${total !== 1 ? 's' : ''}`
+    : `Mostrando ${start + 1}–${end} de ${total} alarma${total !== 1 ? 's' : ''}`;
+
+  if (pagInfoTop) pagInfoTop.textContent = infoText;
+  if (pagInfoBot) pagInfoBot.textContent = infoText;
+
+  // Mostrar/ocultar paginación
+  const showPag = pages > 1 && perPage < 9000;
+  if (pagTopWrap) pagTopWrap.style.setProperty('display', showPag ? 'flex' : 'none', 'important');
+  if (pagBotWrap) pagBotWrap.style.display = showPag ? '' : 'none';
+
+  if (showPag) {
+    buildPagination(pagTop,  pages);
+    buildPagination(pagBot,  pages);
+  }
+}
+
+// ── Construir controles de página ─────────────────────────────────
+function buildPagination(ul, pages) {
+  ul.innerHTML = '';
+
+  const addBtn = (label, page, disabled, active) => {
+    const li = document.createElement('li');
+    li.className = (disabled ? 'disabled ' : '') + (active ? 'active' : '');
+    const a = document.createElement('a');
+    a.className   = 'gpage-link';
+    a.textContent = label;
+    a.href        = '#';
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      if (!disabled) { currentPage = page; render(); window.scrollTo({top:0, behavior:'smooth'}); }
+    });
+    li.appendChild(a);
+    ul.appendChild(li);
+  };
+
+  addBtn('← Ant', currentPage - 1, currentPage <= 1, false);
+
+  pageRange(currentPage, pages).forEach(p => {
+    if (p === '…') {
+      const li = document.createElement('li');
+      li.className = 'disabled';
+      li.innerHTML = '<span class="gpage-link" style="cursor:default">…</span>';
+      ul.appendChild(li);
+    } else {
+      addBtn(p, p, false, p === currentPage);
+    }
+  });
+
+  addBtn('Sig →', currentPage + 1, currentPage >= pages, false);
+}
+
+function pageRange(cur, total) {
+  if (total <= 7) return Array.from({length: total}, (_, i) => i + 1);
+  const s = new Set([1, total, cur]);
+  if (cur > 1) s.add(cur - 1);
+  if (cur < total) s.add(cur + 1);
+  const arr = Array.from(s).sort((a,b) => a - b);
+  const res = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (i > 0 && arr[i] - arr[i-1] > 1) res.push('…');
+    res.push(arr[i]);
+  }
+  return res;
+}
+
+// ── Reset página al cambiar filtros ──────────────────────────────
+function onFilter() { currentPage = 1; render(); }
+
+function limpiarFiltros() {
+  inputBuscar.value  = '';
+  selFiltro.value    = 'todas';
+  selOrden.value     = 'prioridad_asc';
+  selPerPage.value   = '20';
+  currentPage        = 1;
+  render();
+}
+
+// ── Eventos ──────────────────────────────────────────────────────
+inputBuscar.addEventListener('input',  onFilter);
+selFiltro.addEventListener('change',   onFilter);
+selOrden.addEventListener('change',    onFilter);
+selPerPage.addEventListener('change',  onFilter);
+
+// Arranque
+render();
+
+} // end if container
+</script>
+{% endblock %}

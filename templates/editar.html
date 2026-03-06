@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Editar tarea — Gestor{% endblock %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-2 mb-4">
+  <a href="/" class="btn btn-g-ghost btn-sm">← Volver</a>
+  <span style="color:var(--text-muted); font-size:.85rem;">/ Editar tarea</span>
+</div>
+
+<div class="gcard" style="max-width:760px;">
+  <div class="gcard-header">
+    <span style="color:var(--amber)">✏</span>
+    <span class="gcard-title">Editar tarea</span>
+    <span style="margin-left:auto; font-family:var(--mono); font-size:.75rem; color:var(--text-muted);">
+      ID #{{ tarea[0] }}
+    </span>
+  </div>
+  <div class="gcard-body">
+    {#
+      tarea[0]=id  tarea[1]=descripcion  tarea[2]=categoria
+      tarea[3]=fecha  tarea[4]=completada  tarea[5]=codigo
+    #}
+    <form method="POST">
+      <div class="row g-3">
+
+        <div class="col-sm-6 col-md-4">
+          <label class="form-label">Código</label>
+          <input type="text" name="codigo" class="form-control"
+                 value="{{ tarea[5] if tarea[5] else '' }}"
+                 placeholder="Ej: PRAC-001" autocomplete="off">
+        </div>
+
+        <div class="col-sm-6 col-md-8">
+          <label class="form-label">Descripción <span style="color:var(--red)">*</span></label>
+          <input type="text" name="descripcion" class="form-control"
+                 value="{{ tarea[1] }}" required autocomplete="off">
+        </div>
+
+        <div class="col-sm-6 col-md-4">
+          <label class="form-label">Categoría</label>
+          <input type="text" name="categoria" class="form-control"
+                 value="{{ tarea[2] if tarea[2] else '' }}"
+                 placeholder="Ej: Practicas" autocomplete="off">
+        </div>
+
+        <div class="col-sm-6 col-md-4">
+          <label class="form-label">Fecha</label>
+          <input type="date" name="fecha" class="form-control"
+                 value="{{ tarea[3] if tarea[3] else '' }}">
+        </div>
+
+        <div class="col-sm-6 col-md-4">
+          <label class="form-label">Estado</label>
+          <select name="completada" class="form-select">
+            <option value="0" {% if tarea[4]==0 %}selected{% endif %}>● Pendiente</option>
+            <option value="1" {% if tarea[4]==1 %}selected{% endif %}>✔ Completada</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div class="d-flex gap-2 mt-4 pt-3" style="border-top:1px solid var(--border);">
+        <button type="submit" class="btn btn-g-primary">💾 Guardar cambios</button>
+        <a href="/" class="btn btn-g-ghost">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

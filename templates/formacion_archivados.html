@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+{% block title %}Archivador de Cursos — Formación{% endblock %}
+
+{% block content %}
+
+
+{# ── HEADER ── #}
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <h4 style="font-weight:700; margin:0;">📦 Archivador de Cursos</h4>
+    <div style="font-family:var(--mono); font-size:.75rem; color:var(--text-muted); margin-top:.2rem;">
+      {{ total_cursos_arch }} curso{{ 's' if total_cursos_arch != 1 else '' }} archivado{{ 's' if total_cursos_arch != 1 else '' }}
+      · {{ total_archivados }} alumno{{ 's' if total_archivados != 1 else '' }} en total
+    </div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('formacion.exportar_excel') }}" class="btn btn-g-success">
+      ⬇ Exportar Excel
+    </a>
+    <a href="{{ url_for('formacion.formacion') }}" class="btn btn-g-ghost">← Volver a Formación</a>
+  </div>
+</div>
+
+{# ── KPI STRIP ── #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card blue">
+      <div class="stat-label">Cursos archivados</div>
+      <div class="stat-value">{{ total_cursos_arch }}</div>
+      <div style="font-size:.75rem; color:var(--text-muted);">histórico completo</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card amber">
+      <div class="stat-label">Alumnos archivados</div>
+      <div class="stat-value" style="color:var(--amber);">{{ total_archivados }}</div>
+      <div style="font-size:.75rem; color:var(--text-muted);">registros guardados</div>
+    </div>
+  </div>
+  {% if grupos %}
+  {% set mejor = grupos | sort(attribute='pct_exito') | last %}
+  <div class="col-6 col-md-3">
+    <div class="stat-card green">
+      <div class="stat-label">Mayor tasa de éxito</div>
+      <div class="stat-value" style="color:var(--accent); font-size:1.6rem;">{{ mejor.pct_exito }}%</div>
+      <div style="font-size:.73rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+        {{ mejor.curso }}
+      </div>
+    </div>
+  </div>
+  {% set total_sup = grupos | sum(attribute='superan') %}
+  {% set total_all = grupos | sum(attribute='total') %}
+  {% set pct_global = ((total_sup / total_all * 100) | round(1)) if total_all else 0 %}
+  <div class="col-6 col-md-3">
+    <div class="stat-card red">
+      <div class="stat-label">Tasa global histórica</div>
+      <div class="stat-value" style="color:var(--blue); font-size:1.6rem;">{{ pct_global }}%</div>
+      <div style="font-size:.75rem; color:var(--text-muted);">{{ total_sup }}/{{ total_all }} aprobados</div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if not grupos %}
+{# ── EMPTY STATE ── #}
+<div class="gcard">
+  <div class="gcard-body" style="text-align:center; padding:3.5rem 1rem;">
+    <div style="font-size:3rem; margin-bottom:.7rem;">📦</div>
+    <h5 style="font-weight:700; margin-bottom:.4rem;">No hay cursos archivados aún</h5>
+    <p style="color:var(--text-muted); font-size:.88rem;">
+      Cuando un curso finalice, podés archivarlo desde la pantalla de Formación.<br>
+      Los datos se guardarán aquí para consulta histórica.
+    </p>
+    <a href="{{ url_for('formacion.formacion') }}" class="btn btn-g-primary mt-2">← Ir a Formación</a>
+  </div>
+</div>
+
+{% else %}
+
+{# ── BUSCADOR ── #}
+<div class="search-wrap mb-3" style="max-width:340px;">
+  <span class="search-icon">🔍</span>
+  <input type="text" id="buscador-arch" class="form-control"
+         placeholder="Buscar curso o alumno…">
+</div>
+
+<div id="no-arch-results" style="display:none; text-align:center; padding:2rem; color:var(--text-muted);">
+  <div style="font-size:1.6rem; margin-bottom:.3rem;">🔍</div>
+  Ningún curso coincide con la búsqueda.
+</div>
+
+{# ── LISTA DE CURSOS ARCHIVADOS ── #}
+{% for g in grupos %}
+<div class="curso-card" data-curso-search="{{ g.curso | lower }}
+  {% for a in g.alumnos %} {{ a.nombre | lower }}{% endfor %}">
+
+  {# ── CABECERA DEL CURSO ── #}
+  <div class="curso-card-header" onclick="toggleCurso(this)">
+    <span class="chevron">▶</span>
+
+    <div style="flex:1; min-width:0;">
+      <div class="curso-nombre">📚 {{ g.curso }}</div>
+      <div style="font-size:.72rem; color:var(--text-muted); margin-top:.1rem; font-family:var(--mono);">
+        Archivado: {{ g.fecha_archivo or '—' }}
+        {% if g.fecha_inicio != '—' %} · Inicio: {{ g.fecha_inicio }}{% endif %}
+        {% if g.fecha_fin    != '—' %} · Fin: {{ g.fecha_fin }}{% endif %}
+      </div>
+    </div>
+
+    <div class="curso-meta">
+      {# Barra de éxito #}
+      <div style="display:flex; align-items:center; gap:.4rem;">
+        <div class="pbar">
+          <div class="pbar-fill" style="width:{{ g.pct_exito }}%;
+            background:{{ 'var(--accent)' if g.pct_exito >= 75 else ('var(--amber)' if g.pct_exito >= 50 else 'var(--red)') }};"></div>
+        </div>
+        <span style="font-family:var(--mono); font-size:.78rem; min-width:36px; font-weight:700;
+          color:{{ 'var(--accent)' if g.pct_exito >= 75 else ('var(--amber)' if g.pct_exito >= 50 else 'var(--red)') }};">
+          {{ g.pct_exito }}%
+        </span>
+      </div>
+
+      <span style="font-size:.78rem; color:var(--text-muted);">
+        <strong style="color:var(--text);">{{ g.total }}</strong> alumno{{ 's' if g.total != 1 else '' }}
+      </span>
+
+      <span class="badge-g {{ 'badge-done' if g.pct_exito >= 75 else ('badge-pending' if g.pct_exito >= 50 else 'badge-cat') }}"
+            style="font-size:.68rem; flex-shrink:0;">
+        {{ g.superan }}/{{ g.total }} superan 75%
+      </span>
+
+      {# Botón restaurar #}
+      <form method="POST" action="{{ url_for('formacion.restaurar_curso') }}"
+            onsubmit="event.stopPropagation(); return confirm('¿Restaurar el curso «{{ g.curso }}»? Los alumnos volverán a la lista activa.')">
+        <input type="hidden" name="curso" value="{{ g.curso }}">
+        <button type="submit" class="btn btn-g-ghost btn-sm"
+                style="font-size:.73rem; white-space:nowrap; border-color:var(--accent); color:var(--accent);"
+                onclick="event.stopPropagation()">
+          ↩ Restaurar
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {# ── CUERPO: DETALLE DEL CURSO ── #}
+  <div class="curso-body">
+    {# KPI mini del curso #}
+    <div class="kpi-mini">
+      <div class="kpi-mini-item">
+        <div class="klabel">Alumnos</div>
+        <div class="kval">{{ g.total }}</div>
+      </div>
+      <div class="kpi-mini-item">
+        <div class="klabel">Superan 75%</div>
+        <div class="kval" style="color:var(--accent);">{{ g.superan }}</div>
+      </div>
+      <div class="kpi-mini-item">
+        <div class="klabel">Tasa éxito</div>
+        <div class="kval" style="color:{{ 'var(--accent)' if g.pct_exito >= 75 else ('var(--amber)' if g.pct_exito >= 50 else 'var(--red)') }};">
+          {{ g.pct_exito }}%
+        </div>
+      </div>
+      <div class="kpi-mini-item">
+        <div class="klabel">Prog. promedio</div>
+        <div class="kval" style="color:var(--blue);">{{ g.avg_progreso }}%</div>
+      </div>
+      <div class="kpi-mini-item">
+        <div class="klabel">Exámenes</div>
+        <div class="kval">{{ g.total_examenes }}</div>
+      </div>
+    </div>
+
+    {# Tabla de alumnos del curso #}
+    <div class="table-responsive">
+      <table class="gtable">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Progreso</th>
+            <th>Exámenes</th>
+            <th>Fecha Inicio</th>
+            <th>Fecha Fin</th>
+            <th>Estado</th>
+            <th>Teléfono</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in g.alumnos %}
+          <tr>
+            <td style="font-weight:600;">{{ a.nombre }}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:.5rem;">
+                <div style="flex:1; height:6px; background:var(--bg3); border-radius:99px; overflow:hidden; min-width:55px;">
+                  <div style="height:100%; width:{{ [a.progreso, 100] | min }}%;
+                    background:{{ 'var(--accent)' if a.progreso >= 75 else ('var(--blue)' if a.progreso >= 50 else ('var(--amber)' if a.progreso >= 25 else 'var(--red)')) }};
+                    border-radius:99px;"></div>
+                </div>
+                <span style="font-family:var(--mono); font-size:.77rem; min-width:36px;">{{ a.progreso }}%</span>
+              </div>
+              {# ── Indicador de tendencia para alumnos fusionados ── #}
+              {% if a.tendencia == 'subio' %}
+                <div style="font-size:.68rem; margin-top:.2rem; color:var(--accent);">
+                  ▲ subió {{ a.delta_arch }}% <span style="color:var(--text-muted);">(antes {{ a.progreso_anterior }}%)</span>
+                </div>
+              {% elif a.tendencia == 'bajo' %}
+                <div style="font-size:.68rem; margin-top:.2rem; color:var(--red);">
+                  ▼ bajó {{ a.delta_arch | abs }}% <span style="color:var(--text-muted);">(antes {{ a.progreso_anterior }}%)</span>
+                </div>
+              {% elif a.tendencia == 'igual' %}
+                <div style="font-size:.68rem; margin-top:.2rem; color:var(--text-muted);">
+                  ● sin cambio ({{ a.progreso_anterior }}%)
+                </div>
+              {% endif %}
+            </td>
+            <td style="font-family:var(--mono); font-size:.83rem; text-align:center;">
+              {{ a.examenes }}
+            </td>
+            <td style="font-family:var(--mono); font-size:.77rem; white-space:nowrap;">
+              {{ a.fecha_inicio or '—' }}
+            </td>
+            <td style="font-family:var(--mono); font-size:.77rem; white-space:nowrap;">
+              {{ a.fecha_fin or '—' }}
+            </td>
+            <td>
+              {% if a.supera_75 == 1 %}
+                <span class="badge-g badge-done" style="font-size:.68rem;">✔ Superó 75%</span>
+              {% else %}
+                <span class="badge-g badge-pending" style="font-size:.68rem;">● Bajo 75%</span>
+              {% endif %}
+            </td>
+            <td style="font-family:var(--mono); font-size:.75rem;">
+              {% if a.telefono %}
+                <a href="https://wa.me/{{ a.telefono | replace('+','') | replace(' ','') | replace('-','') }}"
+                   target="_blank" style="color:var(--accent); text-decoration:none;">
+                  💬 {{ a.telefono }}
+                </a>
+              {% else %}
+                <span style="color:var(--text-muted);">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>{# fin curso-body #}
+</div>{# fin curso-card #}
+{% endfor %}
+
+{% endif %}{# end if grupos #}
+
+<script>
+/* ── Toggle curso ── */
+function toggleCurso(header) {
+  const body    = header.nextElementSibling;
+  const chevron = header.querySelector('.chevron');
+  const isOpen  = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  header.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
+}
+
+/* ── Buscador ── */
+document.getElementById('buscador-arch')?.addEventListener('input', function() {
+  const q       = this.value.toLowerCase().trim();
+  const cards   = document.querySelectorAll('.curso-card');
+  const noRes   = document.getElementById('no-arch-results');
+  let visible   = 0;
+
+  cards.forEach(card => {
+    const hayMatch = !q || card.dataset.cursoSearch.includes(q);
+    card.style.display = hayMatch ? '' : 'none';
+    if (hayMatch) visible++;
+
+    // Si hay búsqueda y coincide, abrir el accordion automáticamente
+    if (q && hayMatch) {
+      const body    = card.querySelector('.curso-body');
+      const header  = card.querySelector('.curso-card-header');
+      const chevron = card.querySelector('.chevron');
+      if (body && !body.classList.contains('open')) {
+        body.classList.add('open');
+        header?.classList.add('open');
+        chevron?.classList.add('open');
+      }
+    }
+  });
+
+  if (noRes) noRes.style.display = visible === 0 && q ? 'block' : 'none';
+});
+</script>
+
+{% endblock %}
