@@ -4,6 +4,7 @@ Aplicación web desarrollada en **Python** que permite gestionar **tareas** y **
 El objetivo del proyecto es facilitar la organización del trabajo y el seguimiento del aprendizaje o capacitación dentro de un mismo sistema.
 
 ---
+cloudflared tunnel --url http://localhost:5000
 
 ## 🚀 Características
 
