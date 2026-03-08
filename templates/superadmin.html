@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}Gráficos Globales — SuperAdmin{% endblock %}
+
+{% block content %}
+<style>
+.sa-grid      { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+.sa-kpi       { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:1.2rem 1.5rem; }
+.sa-kpi-label { font-family:var(--mono); font-size:.7rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.07em; margin-bottom:.4rem; }
+.sa-kpi-val   { font-size:2rem; font-weight:800; letter-spacing:-.03em; }
+.sa-kpi-sub   { font-size:.78rem; color:var(--text-muted); margin-top:.2rem; }
+.sa-charts    { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; }
+.sa-chart-full{ grid-column:1/-1; }
+.sa-card      { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:1.25rem; }
+.sa-card-title{ font-size:.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:1rem; }
+.sa-table     { width:100%; border-collapse:collapse; font-size:.83rem; }
+.sa-table th  { font-family:var(--mono); font-size:.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; padding:.4rem .75rem; border-bottom:1px solid var(--border); text-align:left; }
+.sa-table td  { padding:.55rem .75rem; border-bottom:1px solid rgba(48,54,61,.5); }
+.sa-table tr:last-child td { border-bottom:none; }
+.sa-table tr.sa-clickable:hover td { background:var(--bg3); cursor:pointer; }
+.bar-wrap     { background:var(--bg3); border-radius:99px; height:6px; flex:1; overflow:hidden; }
+.bar-fill     { height:100%; border-radius:99px; transition:width .4s ease; }
+@keyframes saSU { from{opacity:0;transform:translateY(14px) scale(.97)} to{opacity:1;transform:none} }
+.sa-item      { padding:.65rem 1.4rem; border-bottom:1px solid rgba(48,54,61,.4); transition:background .12s; }
+.sa-item:hover{ background:var(--bg3); }
+.sa-item:last-child{ border-bottom:none; }
+@media(max-width:767px){ .sa-charts{grid-template-columns:1fr} .sa-chart-full{grid-column:1} }
+</style>
+
+<!-- Cabecera -->
+<div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div>
+    <h4 style="font-weight:700;margin:0;">&#x1F4CA; Gr&#225;ficos Globales</h4>
+    <div style="font-family:var(--mono);font-size:.75rem;color:var(--text-muted);margin-top:.2rem;">
+      Vista SuperAdmin &middot; Actualizado {{ fecha_actual }}
+    </div>
+  </div>
+</div>
+
+<!-- KPIs -->
+<div class="sa-grid">
+  <div class="sa-kpi">
+    <div class="sa-kpi-label">Total tareas</div>
+    <div class="sa-kpi-val" style="color:var(--blue);">{{ total }}</div>
+    <div class="sa-kpi-sub">en todos los usuarios</div>
+  </div>
+  <div class="sa-kpi">
+    <div class="sa-kpi-label">Completadas</div>
+    <div class="sa-kpi-val" style="color:var(--accent);">{{ completadas }}</div>
+    <div class="sa-kpi-sub">{{ pct }}% del total</div>
+  </div>
+  <div class="sa-kpi">
+    <div class="sa-kpi-label">Pendientes</div>
+    <div class="sa-kpi-val" style="color:var(--amber);">{{ pendientes }}</div>
+    <div class="sa-kpi-sub">{{ 100 - pct }}% del total</div>
+  </div>
+  <div class="sa-kpi">
+    <div class="sa-kpi-label">Usuarios activos</div>
+    <div class="sa-kpi-val" style="color:var(--purple, #a78bfa);">{{ por_usuario|length }}</div>
+    <div class="sa-kpi-sub">con tareas registradas</div>
+  </div>
+</div>
+
+<!-- Gr&#225;ficos -->
+<div class="sa-charts">
+  <div class="sa-card">
+    <div class="sa-card-title">Tareas por usuario</div>
+    <canvas id="chartUsuarios" height="260"></canvas>
+  </div>
+  <div class="sa-card">
+    <div class="sa-card-title">Tareas por categor&#237;a</div>
+    <canvas id="chartCategorias" height="260"></canvas>
+  </div>
+  <div class="sa-card sa-chart-full">
+    <div class="sa-card-title">Evoluci&#243;n de tareas completadas (&#250;ltimos 30 d&#237;as con actividad)</div>
+    <canvas id="chartEvolucion" height="110"></canvas>
+  </div>
+</div>
+
+<!-- Tabla detallada por usuario -->
+<div class="sa-card">
+  <div class="sa-card-title">Detalle por usuario</div>
+  <div style="overflow-x:auto;">
+    <table class="sa-table">
+      <thead>
+        <tr>
+          <th>Usuario</th><th>Total</th><th>Completadas</th>
+          <th>Pendientes</th><th style="min-width:140px;">Progreso</th><th>% &#201;xito</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in por_usuario %}
+        {% set pct_u = ((u.completadas or 0) / u.total * 100)|round(1) if u.total else 0 %}
+        {% set color = 'var(--accent)' if pct_u >= 70 else ('var(--amber)' if pct_u >= 40 else 'var(--red)') %}
+        <tr class="sa-clickable" onclick="abrirModal('{{ u.username }}')">
+          <td style="font-weight:700;color:var(--blue);">{{ u.username }}</td>
+          <td style="font-family:var(--mono);">{{ u.total }}</td>
+          <td style="color:var(--accent);font-family:var(--mono);">{{ u.completadas or 0 }}</td>
+          <td style="color:var(--amber);font-family:var(--mono);">{{ u.pendientes or 0 }}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:.5rem;">
+              <div class="bar-wrap">
+                <div class="bar-fill" style="width:{{ pct_u }}%;background:{{ color }};"></div>
+              </div>
+            </div>
+          </td>
+          <td style="font-weight:700;color:{{ color }};font-family:var(--mono);">{{ pct_u }}%</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem;">Sin datos</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL UNICO -->
+<div id="sa-modal" style="display:none;position:fixed;inset:0;z-index:9999;
+     background:rgba(0,0,0,.65);backdrop-filter:blur(5px);
+     align-items:center;justify-content:center;padding:1rem;"
+     onclick="if(event.target===this)cerrarModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border-soft);border-radius:16px;
+              width:100%;max-width:540px;max-height:82vh;display:flex;flex-direction:column;
+              box-shadow:0 28px 70px rgba(0,0,0,.55);animation:saSU .2s ease both;">
+    <div style="padding:1.1rem 1.4rem;border-bottom:1px solid var(--border-soft);
+         display:flex;align-items:center;gap:.75rem;flex-shrink:0;">
+      <span id="m-icon" style="font-size:1.4rem;"></span>
+      <div style="flex:1;min-width:0;">
+        <div id="m-titulo" style="font-weight:800;font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+        <div id="m-sub"    style="font-size:.72rem;color:var(--text-muted);font-family:var(--mono);margin-top:.1rem;"></div>
+      </div>
+      <button onclick="cerrarModal()" style="background:none;border:none;cursor:pointer;
+              color:var(--text-muted);font-size:1.2rem;line-height:1;padding:.25rem .4rem;border-radius:7px;">&#x2715;</button>
+    </div>
+    <div id="m-kpis" style="display:flex;gap:.5rem;padding:.85rem 1.4rem .6rem;
+         border-bottom:1px solid var(--border-soft);flex-shrink:0;flex-wrap:wrap;"></div>
+    <div id="m-lista" style="overflow-y:auto;flex:1;padding:.5rem 0;"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Datos Flask ──────────────────────────────────────────────────
+const DATA_USUARIOS   = {{ por_usuario   | tojson }};
+const DATA_CATEGORIAS = {{ por_categoria | tojson }};
+const DATA_FECHAS     = {{ por_fecha     | tojson }};
+const DET_USUARIOS    = {{ detalle_por_usuario   | tojson if detalle_por_usuario   is defined else '{}' }};
+const DET_CATEGORIAS  = {{ detalle_por_categoria | tojson if detalle_por_categoria is defined else '{}' }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.color = '#7d8590';
+Chart.defaults.borderColor = '#30363d';
+
+const COLORS = ['#38bdf8','#4ade80','#fbbf24','#f87171','#a78bfa',
+                '#34d399','#fb923c','#60a5fa','#e879f9','#2dd4bf'];
+
+// ── Chart: usuarios ─────────────────────────────────────────────
+new Chart(document.getElementById('chartUsuarios'), {
+  type: 'bar',
+  data: {
+    labels: DATA_USUARIOS.map(u => u.username),
+    datasets: [
+      { label:'Completadas', data: DATA_USUARIOS.map(u => u.completadas||0),
+        backgroundColor:'rgba(74,222,128,.7)', borderRadius:6 },
+      { label:'Pendientes',  data: DATA_USUARIOS.map(u => u.pendientes||0),
+        backgroundColor:'rgba(251,191,36,.5)', borderRadius:6 }
+    ]
+  },
+  options: {
+    responsive:true, plugins:{ legend:{position:'top'} },
+    scales:{ x:{stacked:true,grid:{color:'#21262d'}}, y:{stacked:true,grid:{color:'#21262d'},beginAtZero:true} },
+    onClick(evt, els) { if(els.length) abrirModal(DATA_USUARIOS[els[0].index].username); },
+    onHover(evt, els) { evt.native.target.style.cursor = els.length?'pointer':'default'; }
+  }
+});
+
+// ── Chart: categorias ───────────────────────────────────────────
+new Chart(document.getElementById('chartCategorias'), {
+  type: 'doughnut',
+  data: {
+    labels: DATA_CATEGORIAS.map(c => c.categoria),
+    datasets:[{ data: DATA_CATEGORIAS.map(c=>c.total),
+      backgroundColor: COLORS.slice(0, DATA_CATEGORIAS.length),
+      borderColor:'#161b22', borderWidth:2, hoverOffset:6 }]
+  },
+  options: {
+    responsive:true, cutout:'62%',
+    plugins:{ legend:{position:'right',labels:{boxWidth:12,padding:14}} },
+    onClick(evt, els) {
+      if(els.length) abrirModalCat(DATA_CATEGORIAS[els[0].index], COLORS[els[0].index % COLORS.length]);
+    },
+    onHover(evt, els) { evt.native.target.style.cursor = els.length?'pointer':'default'; }
+  }
+});
+
+// ── Chart: evolucion ────────────────────────────────────────────
+new Chart(document.getElementById('chartEvolucion'), {
+  type:'line',
+  data:{
+    labels: DATA_FECHAS.map(f=>f.fecha),
+    datasets:[{ label:'Completadas', data: DATA_FECHAS.map(f=>f.total),
+      borderColor:'#38bdf8', backgroundColor:'rgba(56,189,248,.08)',
+      borderWidth:2, pointBackgroundColor:'#38bdf8', pointRadius:3, fill:true, tension:0.35 }]
+  },
+  options:{ responsive:true, plugins:{legend:{display:false}},
+            scales:{ x:{grid:{color:'#21262d'}}, y:{grid:{color:'#21262d'},beginAtZero:true} } }
+});
+
+// ── Modal helpers ───────────────────────────────────────────────
+function cerrarModal() { document.getElementById('sa-modal').style.display='none'; }
+document.addEventListener('keydown', e => { if(e.key==='Escape') cerrarModal(); });
+
+function kpi(label, val, color) {
+  return '<div style="background:var(--bg3);border-radius:9px;padding:.45rem .85rem;flex:1;min-width:80px;">'
+    + '<div style="font-size:.6rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.15rem;">' + label + '</div>'
+    + '<div style="font-size:1.25rem;font-weight:800;color:' + color + ';font-family:var(--mono);">' + val + '</div>'
+    + '</div>';
+}
+
+function fmtF(str) {
+  if (!str) return '—';
+  try {
+    const s = str.includes('-') ? str : str.split('/').reverse().join('-');
+    return new Date(s+'T00:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
+  } catch { return str; }
+}
+
+function itemHTML(t) {
+  const badge = t.completada
+    ? '<span style="font-size:.62rem;font-weight:700;color:var(--accent);background:rgba(63,185,80,.15);border-radius:99px;padding:.1rem .4rem;">&#x2714; Hecha</span>'
+    : '<span style="font-size:.62rem;font-weight:700;color:var(--amber);background:rgba(210,153,34,.15);border-radius:99px;padding:.1rem .4rem;">&#x25CF; Pendiente</span>';
+  const cod  = t.codigo   ? '<span style="font-family:var(--mono);font-size:.68rem;color:var(--accent);background:var(--bg3);border-radius:5px;padding:.05rem .3rem;">' + t.codigo + '</span> ' : '';
+  const who  = t.username ? '<span style="font-size:.68rem;color:var(--blue);">&#x1F464; ' + t.username + '</span>' : '';
+  const cat  = t.categoria? '<span style="font-size:.68rem;color:var(--text-muted);">&middot; ' + t.categoria + '</span>' : '';
+  const desc = (t.descripcion||'—').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return '<div class="sa-item">'
+    + '<div style="display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;margin-bottom:.2rem;">' + cod + badge + '</div>'
+    + '<div style="font-size:.83rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:.15rem;">' + desc + '</div>'
+    + '<div style="display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;font-size:.68rem;">' + who + cat
+    + ' <span style="color:var(--text-muted);font-family:var(--mono);">&#x1F4C5; ' + fmtF(t.fecha) + '</span></div>'
+    + '</div>';
+}
+
+// ── Abrir modal por usuario (tabla + gráfico) ───────────────────
+function abrirModal(username) {
+  const uData  = DATA_USUARIOS.find(u => u.username === username) || {};
+  const tareas = DET_USUARIOS[username] || [];
+  const total  = tareas.length || uData.total || 0;
+  const hechas = tareas.length ? tareas.filter(t=>t.completada).length : (uData.completadas||0);
+  const pend   = total - hechas;
+  const pct    = total ? Math.round(hechas/total*100) : 0;
+  const col    = pct>=70?'var(--accent)':pct>=40?'var(--amber)':'var(--red)';
+
+  document.getElementById('m-icon').textContent   = '\uD83D\uDC64';
+  document.getElementById('m-titulo').textContent = username;
+  document.getElementById('m-sub').textContent    = total + ' tarea' + (total!==1?'s':'') + ' en total';
+  document.getElementById('m-kpis').innerHTML     =
+    kpi('Total',total,'var(--blue)') + kpi('Hechas',hechas,'var(--accent)') +
+    kpi('Pendientes',pend,'var(--amber)') + kpi('% Éxito',pct+'%',col);
+
+  const sorted = [...tareas].sort((a,b)=>(a.completada-b.completada)||(b.fecha||'').localeCompare(a.fecha||''));
+  document.getElementById('m-lista').innerHTML = sorted.length
+    ? sorted.map(itemHTML).join('')
+    : '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin tareas registradas.</div>';
+
+  document.getElementById('sa-modal').style.display = 'flex';
+}
+
+// ── Abrir modal por categoría (gráfico dona) ────────────────────
+function abrirModalCat(cat, colorHex) {
+  const nombre = cat.categoria || 'General';
+  const tareas = DET_CATEGORIAS[nombre] || [];
+  const total  = tareas.length || cat.total || 0;
+  const hechas = tareas.filter(t=>t.completada).length;
+  const pend   = total - hechas;
+  const pct    = total ? Math.round(hechas/total*100) : 0;
+  const col    = pct>=70?'var(--accent)':pct>=40?'var(--amber)':'var(--red)';
+
+  document.getElementById('m-icon').textContent   = '\uD83C\uDFF7\uFE0F';
+  document.getElementById('m-titulo').textContent = nombre;
+  document.getElementById('m-sub').textContent    = cat.total + ' tarea' + (cat.total!==1?'s':'') + ' en esta categoría';
+  document.getElementById('m-kpis').innerHTML     =
+    kpi('Total',cat.total,colorHex) + kpi('Hechas',hechas,'var(--accent)') +
+    kpi('Pendientes',pend,'var(--amber)') + kpi('% Éxito',pct+'%',col);
+
+  const sorted = [...tareas].sort((a,b)=>(a.completada-b.completada)||(b.fecha||'').localeCompare(a.fecha||''));
+  document.getElementById('m-lista').innerHTML = sorted.length
+    ? sorted.map(itemHTML).join('')
+    : '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Sin tareas en esta categoría.</div>';
+
+  document.getElementById('sa-modal').style.display = 'flex';
+}
+</script>
+{% endblock %}

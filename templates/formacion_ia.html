@@ -20,7 +20,6 @@
   <button class="ia-tab" onclick="cambiarTab('mensajes', this)">💬 Mensajes WA</button>
   <button class="ia-tab" onclick="cambiarTab('curso', this)">🔍 Análisis de curso</button>
   <button class="ia-tab" onclick="cambiarTab('chatbot', this)">🤖 Chatbot</button>
-  <button class="ia-tab" onclick="cambiarTab('moodle', this)">🎓 Moodle</button>
 </div>
 
 <!-- ══════════════════════════════════════════ -->
@@ -179,103 +178,6 @@
         </button>
       </div>
     </div>
-  </div>
-</div>
-
-
-<!-- ══════════════════════════════════════════ -->
-<!-- TAB 5: MOODLE MENSAJES                    -->
-<!-- ══════════════════════════════════════════ -->
-<div id="tab-moodle" class="ia-panel" style="display:none;">
-
-  <!-- Config -->
-  <div class="gcard" style="margin-bottom:1rem;">
-    <div class="gcard-header">
-      <span>🎓</span>
-      <span class="gcard-title">Conexión con Moodle</span>
-      <button onclick="toggleMoodleConfig()" id="btn-moodle-config"
-              class="btn btn-g-ghost btn-sm ms-auto" style="font-size:.75rem;">⚙ Configurar</button>
-    </div>
-    <div id="moodle-config-panel" style="display:none;" class="gcard-body">
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.75rem;">
-        <div>
-          <label style="font-size:.75rem; color:var(--text-muted); display:block; margin-bottom:.3rem;">URL Moodle</label>
-          <input type="text" id="moodle-url" class="form-control" placeholder="https://cursos.metodogrupo.com"
-                 value="https://cursos.metodogrupo.com">
-        </div>
-        <div>
-          <label style="font-size:.75rem; color:var(--text-muted); display:block; margin-bottom:.3rem;">Token de acceso</label>
-          <input type="password" id="moodle-token" class="form-control" placeholder="tu_token_moodle">
-        </div>
-        <div>
-          <label style="font-size:.75rem; color:var(--text-muted); display:block; margin-bottom:.3rem;">URL o ID del curso</label>
-          <input type="text" id="moodle-curso-url" class="form-control"
-                 placeholder="https://cursos.metodogrupo.com/course/view.php?id=5785">
-        </div>
-        <div>
-          <label style="font-size:.75rem; color:var(--text-muted); display:block; margin-bottom:.3rem;">Tipo de mensajes a cargar</label>
-          <select id="moodle-tipo" class="form-select">
-            <option value="ambos">📋 Foros + Mensajes privados</option>
-            <option value="foros">💬 Solo foros</option>
-            <option value="privados">✉ Solo mensajes privados</option>
-          </select>
-        </div>
-      </div>
-      <div style="padding:.65rem .9rem; background:var(--bg3); border-radius:8px; font-size:.78rem; color:var(--text-muted); margin-bottom:.75rem;">
-        💡 Obtén el token en Moodle → Administración → Seguridad → Claves de API web.
-        Necesitas activar el servicio REST y el plugin <strong>webservice</strong>.
-      </div>
-      <button onclick="guardarConfigMoodle()" class="btn btn-g-primary btn-sm">💾 Guardar configuración</button>
-    </div>
-
-    <!-- Barra de carga -->
-    <div class="gcard-body" style="padding-top:.5rem; border-top:1px solid var(--border);">
-      <div style="display:flex; gap:.75rem; align-items:center; flex-wrap:wrap;">
-        <div id="moodle-status-badge" style="font-size:.78rem; color:var(--text-muted);">
-          Sin configurar
-        </div>
-        <button onclick="cargarMensajesMoodle()" class="btn btn-g-primary ms-auto" style="white-space:nowrap;">
-          🔄 Cargar mensajes
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Loading -->
-  <div id="moodle-loading" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
-    <span style="display:inline-block; animation:spin .8s linear infinite; font-size:1.4rem;">⟳</span>
-    <div style="margin-top:.6rem; font-size:.83rem;">Conectando con Moodle y cargando mensajes…</div>
-  </div>
-
-  <!-- Resultados -->
-  <div id="moodle-resultado" style="display:none;">
-
-    <!-- Sub-tabs -->
-    <div style="display:flex; gap:.5rem; margin-bottom:1rem; border-bottom:2px solid var(--border); padding-bottom:0;">
-      <button id="subtab-btn-foros" onclick="cambiarSubtabMoodle('foros')"
-              style="background:none; border:none; border-bottom:2px solid var(--accent);
-                     margin-bottom:-2px; padding:.4rem .9rem; font-size:.83rem; font-weight:600;
-                     color:var(--accent); cursor:pointer; border-radius:6px 6px 0 0;">
-        💬 Foros <span id="badge-foros" class="moodle-badge">0</span>
-      </button>
-      <button id="subtab-btn-privados" onclick="cambiarSubtabMoodle('privados')"
-              style="background:none; border:none; border-bottom:2px solid transparent;
-                     margin-bottom:-2px; padding:.4rem .9rem; font-size:.83rem; font-weight:600;
-                     color:var(--text-muted); cursor:pointer; border-radius:6px 6px 0 0;">
-        ✉ Mensajes privados <span id="badge-privados" class="moodle-badge">0</span>
-      </button>
-    </div>
-
-    <!-- Foros -->
-    <div id="subtab-foros">
-      <div id="moodle-foros-lista"></div>
-    </div>
-
-    <!-- Privados -->
-    <div id="subtab-privados" style="display:none;">
-      <div id="moodle-privados-lista"></div>
-    </div>
-
   </div>
 </div>
 

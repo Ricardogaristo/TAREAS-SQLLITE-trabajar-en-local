@@ -1,1 +1,12 @@
-GROQ_API_KEY=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
+# ── Groq AI ───────────────────────────────────────────────────────────────────
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ── MySQL ──────────────────────────────────────────────────────────────────────
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=
+MYSQL_DB=gestor_tareas
+
+# ── (Opcional) Ruta al SQLite original para la migración ──────────────────────
+SQLITE_PATH=formacion.db

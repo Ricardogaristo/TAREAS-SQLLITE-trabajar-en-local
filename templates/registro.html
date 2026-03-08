@@ -1,39 +1,231 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Registro - Gestor de Tareas</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: linear-gradient(135deg, #1cc88a, #4e73df); height: 100vh; display: flex; justify-content: center; align-items: center; }
-        .card { width: 100%; max-width: 400px; border-radius: 15px; }
-        .header { background: #1cc88a; color: white; text-align: center; padding: 20px; border-radius: 15px 15px 0 0; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registro — Gestor Garisto</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:      #0c0b0a;
+      --surface: #141311;
+      --border:  #242220;
+      --ink:     #f0ede8;
+      --ink2:    #7a756f;
+      --ink3:    #3d3a36;
+      --red:     #c8290a;
+      --red-dim: rgba(200,41,10,.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 0; opacity: .45;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -200px; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 400px;
+      background: radial-gradient(ellipse, rgba(200,41,10,.18) 0%, transparent 65%);
+      pointer-events: none; z-index: 0;
+    }
+
+    .card {
+      position: relative; z-index: 1;
+      width: 100%; max-width: 380px;
+      animation: rise .5s cubic-bezier(.22,1,.36,1) both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .mark {
+      display: flex; align-items: center; gap: .6rem;
+      margin-bottom: 2.8rem;
+    }
+    .mark-icon {
+      width: 34px; height: 34px;
+      background: var(--red); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      box-shadow: 0 0 20px rgba(200,41,10,.35);
+    }
+    .mark-name {
+      font-size: .72rem; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--ink2);
+    }
+
+    h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 2.6rem; line-height: 1.05;
+      letter-spacing: -.02em;
+      margin-bottom: .5rem;
+    }
+    h1 em { font-style: italic; color: var(--red); }
+
+    .sub {
+      font-size: .83rem; color: var(--ink2);
+      margin-bottom: 2.2rem; font-weight: 300;
+    }
+    .sub a {
+      color: var(--red); text-decoration: none; font-weight: 500;
+      border-bottom: 1px solid rgba(200,41,10,.3);
+      transition: border-color .15s;
+    }
+    .sub a:hover { border-color: var(--red); }
+
+    .divider { height: 1px; background: var(--border); margin-bottom: 2rem; }
+
+    /* Notice */
+    .notice {
+      background: rgba(200,41,10,.07);
+      border: 1px solid rgba(200,41,10,.18);
+      border-radius: 8px;
+      padding: .65rem .9rem;
+      font-size: .77rem; color: #b07060;
+      line-height: 1.5; margin-bottom: 1.5rem;
+    }
+    .notice strong { color: #e07050; }
+
+    .alert {
+      border-radius: 8px; font-size: .82rem; font-weight: 400;
+      padding: .65rem .9rem; margin-bottom: 1.4rem;
+      display: flex; align-items: flex-start; gap: .4rem;
+      line-height: 1.45;
+      animation: rise .3s ease both;
+    }
+    .alert-error {
+      background: rgba(185,28,28,.1);
+      border: 1px solid rgba(185,28,28,.25);
+      color: #f87171;
+    }
+
+    .field { margin-bottom: 1.1rem; }
+    .field label {
+      display: block;
+      font-size: .67rem; font-weight: 500;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--ink2); margin-bottom: .38rem;
+    }
+    .field input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--ink);
+      font-family: 'DM Sans', sans-serif;
+      font-size: .88rem; font-weight: 300;
+      padding: .7rem 1rem;
+      transition: border-color .15s, box-shadow .15s;
+      outline: none;
+    }
+    .field input:focus {
+      border-color: rgba(200,41,10,.6);
+      box-shadow: 0 0 0 3px rgba(200,41,10,.08);
+    }
+    .field input::placeholder { color: var(--ink3); }
+    .field-hint {
+      font-size: .68rem; color: var(--ink3);
+      margin-top: .3rem; font-weight: 300;
+    }
+
+    .btn {
+      width: 100%; padding: .75rem 1rem;
+      background: var(--red); color: #fff;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500; font-size: .9rem;
+      border: none; border-radius: 8px; cursor: pointer;
+      margin-top: .8rem;
+      display: flex; align-items: center; justify-content: center; gap: .5rem;
+      transition: background .15s, box-shadow .15s, transform .1s;
+      letter-spacing: .01em;
+      box-shadow: 0 0 0 rgba(200,41,10,0);
+    }
+    .btn:hover {
+      background: #d93010;
+      box-shadow: 0 0 24px rgba(200,41,10,.3);
+      transform: translateY(-1px);
+    }
+    .btn:active { transform: translateY(0); }
+    .btn .arr { transition: transform .15s; display: inline-block; }
+    .btn:hover .arr { transform: translateX(4px); }
+
+    .foot {
+      margin-top: 2.5rem;
+      font-size: .67rem; color: #ffffff;
+      text-align: center; letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 480px) {
+      h1 { font-size: 2.1rem; }
+    }
+  </style>
 </head>
 <body>
-<div class="card shadow">
-    <div class="header"><h4>📝 Crear Cuenta</h4></div>
-    <div class="card-body p-4">
-        {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
-        <form method="POST">
-            <div class="mb-3">
-                <label class="form-label">Nombre de Usuario</label>
-                <input type="text" name="username" class="form-control" required>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Correo Electrónico</label>
-                <input type="email" name="email" class="form-control" required>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Contraseña</label>
-                <input type="password" name="password" class="form-control" required>
-            </div>
-            <button type="submit" class="btn btn-success w-100">Registrarse</button>
-        </form>
+
+<div class="card">
+
+  <div class="mark">
+    <div class="mark-icon">🗂</div>
+    <span class="mark-name">Gestor Garisto</span>
+  </div>
+
+  <h1>Crear<br><em>cuenta.</em></h1>
+  <p class="sub">¿Ya tienes cuenta? <a href="{{ url_for('login') }}">Inicia sesión</a></p>
+
+  <div class="divider"></div>
+
+  <div class="notice">
+    El registro público otorga acceso de <strong>Usuario</strong>. Para <strong>Admin</strong> o <strong>Super Admin</strong> contacta con el administrador.
+  </div>
+
+  {% if error %}
+  <div class="alert alert-error">✖ {{ error }}</div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('registro') }}">
+    <div class="field">
+      <label>Nombre de usuario</label>
+      <input type="text" name="username" placeholder="ej: maria_garcia" required autocomplete="username">
     </div>
-    <div class="card-footer text-center">
-        <a href="/login">¿Ya tienes cuenta? Inicia sesión</a>
+    <div class="field">
+      <label>Correo electrónico</label>
+      <input type="email" name="email" placeholder="correo@ejemplo.com" required autocomplete="email">
     </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input type="password" name="password" placeholder="••••••••" required autocomplete="new-password" minlength="6">
+      <div class="field-hint">Mínimo 6 caracteres</div>
+    </div>
+    <button type="submit" class="btn">
+      Crear cuenta <span class="arr">→</span>
+    </button>
+  </form>
+
+  <div class="foot">© 2026 Ricardo Garisto</div>
 </div>
+
 </body>
 </html>

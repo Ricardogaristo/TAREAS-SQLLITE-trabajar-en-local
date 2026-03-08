@@ -20,13 +20,13 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from datetime import date
 from typing import Any
 
 from groq import Groq
 import urllib.parse
 from dotenv import load_dotenv
+from db_mysql import get_form_conn
 
 load_dotenv()
 
@@ -74,16 +74,16 @@ def _llamar_groq(prompt: str, max_tokens: int = 800) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_alumno(alumno_id: int) -> dict | None:
-    conn   = sqlite3.connect(FORM_DB)
-    conn.row_factory = sqlite3.Row
-    row    = conn.execute("SELECT * FROM alumnos WHERE id=?", (alumno_id,)).fetchone()
+    conn = get_form_conn()
+    row  = conn.execute("SELECT * FROM alumnos WHERE id=?", (alumno_id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    if row is None:
+        return None
+    return dict(row)
 
 
 def _get_alumnos_tutor(tutor_id: int) -> list[dict]:
-    conn = sqlite3.connect(FORM_DB)
-    conn.row_factory = sqlite3.Row
+    conn = get_form_conn()
     rows = conn.execute(
         "SELECT * FROM alumnos WHERE tutor_id=? AND (archivado IS NULL OR archivado=0) "
         "ORDER BY progreso ASC",
@@ -94,8 +94,7 @@ def _get_alumnos_tutor(tutor_id: int) -> list[dict]:
 
 
 def _get_historial(alumno_id: int) -> list[dict]:
-    conn = sqlite3.connect(FORM_DB)
-    conn.row_factory = sqlite3.Row
+    conn = get_form_conn()
     rows = conn.execute(
         "SELECT fecha_import, progreso, examenes, delta_progreso "
         "FROM progreso_historial WHERE alumno_id=? ORDER BY fecha_import ASC",
@@ -426,9 +425,8 @@ def predecir_riesgo_curso(tutor_id: int, curso: str) -> dict:
       - lista de alumnos ordenada por riesgo
       - recomendaciones para el tutor
     """
-    conn = sqlite3.connect(FORM_DB)
-    conn.row_factory = sqlite3.Row
-    alumnos = [dict(a) for a in conn.execute(
+    conn = get_form_conn()
+    alumnos = [dict(r) for r in conn.execute(
         "SELECT * FROM alumnos WHERE tutor_id=? AND curso=? AND (archivado IS NULL OR archivado=0)",
         (tutor_id, curso)
     ).fetchall()]
@@ -864,12 +862,11 @@ def importar_telefonos_excel(archivo_bytes: bytes, tutor_id: int, db_path: str |
         return {"error": "No se encontraron teléfonos válidos en el archivo."}
 
     # Actualizar BD
-    conn     = sqlite3.connect(_db)
-    conn.row_factory = sqlite3.Row
-    alumnos  = conn.execute(
+    conn    = get_form_conn()
+    alumnos = [dict(r) for r in conn.execute(
         "SELECT id, nombre FROM alumnos WHERE tutor_id=? AND (archivado IS NULL OR archivado=0)",
         (tutor_id,)
-    ).fetchall()
+    ).fetchall()]
 
     actualizados = 0
     no_encontrados = []

@@ -13,16 +13,8 @@
   <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
     <div>
       <h4 style="font-weight:700; margin:0;">🔔 Alarmas del Tutor</h4>
-      <div style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted); margin-top:.15rem;">
-        {{ hoy_str }}
-        {% if pendientes > 0 %}
-          · <span style="color:var(--red); font-weight:700;">{{ pendientes }} pendiente{{ 's' if pendientes != 1 else '' }}</span>
-        {% else %}
-          · <span style="color:var(--accent);">✔ Todo al día</span>
-        {% endif %}
-      </div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
       <a href="{{ url_for('formacion.formacion_dashboard') }}" class="btn btn-g-ghost btn-sm">◈ Dashboard</a>
       <a href="{{ url_for('formacion.formacion') }}" class="btn btn-g-ghost btn-sm">← Formación</a>
     </div>
@@ -73,6 +65,249 @@
   </div>
 </div>
 
+{# ══════════════════════════════════════════════════════════════════
+   CALENDARIO DE CURSOS Y NOTAS
+══════════════════════════════════════════════════════════════════ #}
+<div id="seccion-calendario" style="display:block; margin-bottom:1.5rem;">
+  <div class="gcard">
+    <div class="gcard-header">
+      <span style="color:var(--blue)">📅</span>
+      <span class="gcard-title">Calendario de Cursos</span>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;">
+        <div id="cal-leyenda" style="display:flex; gap:.5rem; align-items:center; font-size:.72rem; color:var(--text-muted); flex-wrap:wrap;"></div>
+        <div style="display:flex; gap:.3rem; align-items:center; font-size:.72rem; color:var(--text-muted);">
+          <span style="width:8px;height:8px;border-radius:2px;background:var(--amber);display:inline-block;"></span> Nota
+        </div>
+        <button type="button" class="btn btn-g-ghost btn-sm" onclick="cambiarMes(-1)">← Ant</button>
+        <span id="cal-titulo" style="font-family:var(--mono); font-size:.85rem; min-width:130px; text-align:center;"></span>
+        <button type="button" class="btn btn-g-ghost btn-sm" onclick="cambiarMes(1)">Sig →</button>
+        <button type="button" class="btn btn-g-ghost btn-sm" onclick="irHoy()" style="border-color:var(--accent); color:var(--accent);">Hoy</button>
+      </div>
+    </div>
+    <div class="gcard-body" style="padding:0 1.25rem 1.25rem;">
+
+      {# Días de la semana #}
+      <div id="cal-grid" style="
+        display:grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap:4px;
+        margin-top:.75rem;
+      ">
+        {% for d in ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'] %}
+        <div style="text-align:center; font-family:var(--mono); font-size:.72rem;
+                    color:var(--text-muted); padding:.3rem 0; font-weight:700;">{{ d }}</div>
+        {% endfor %}
+        {# Las celdas de días las genera JS #}
+      </div>
+
+      {# Panel lateral: detalle del día seleccionado #}
+      <div id="cal-detalle" style="display:none; margin-top:1rem;
+           background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:1rem;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:.75rem;">
+          <div id="cal-det-fecha" style="font-weight:700; font-size:.95rem;"></div>
+          <button type="button" onclick="cerrarDetalle()"
+                  style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.1rem; line-height:1;">✕</button>
+        </div>
+        <div id="cal-det-eventos" style="margin-bottom:.75rem;"></div>
+        <div id="cal-det-notas" style="margin-bottom:.75rem;"></div>
+
+        {# Formulario para agregar nota #}
+        <div style="border-top:1px solid var(--border); padding-top:.75rem;">
+          <div style="font-size:.78rem; font-weight:600; color:var(--text-muted); margin-bottom:.4rem; text-transform:uppercase; letter-spacing:.05em;">
+            ＋ Agregar nota
+          </div>
+          <div style="display:flex; gap:.4rem; align-items:flex-start; flex-wrap:wrap;">
+            <textarea id="cal-nota-texto" rows="2" class="form-control"
+                      placeholder="Nota para este día…"
+                      style="flex:1; min-width:160px; font-size:.83rem; resize:none;"></textarea>
+            <div style="display:flex; flex-direction:column; gap:.3rem;">
+              <select id="cal-nota-color" class="form-control" style="font-size:.8rem; padding:.3rem .5rem;">
+                <option value="amber">🟡 Recordatorio</option>
+                <option value="blue">🔵 Informativo</option>
+                <option value="green">🟢 Positivo</option>
+                <option value="red">🔴 Urgente</option>
+              </select>
+              <button type="button" class="btn btn-g-primary btn-sm" onclick="guardarNota()">
+                💾 Guardar
+              </button>
+            </div>
+          </div>
+          <input type="hidden" id="cal-nota-id" value="">
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════
+   GRÁFICO GANTT DE CURSOS
+══════════════════════════════════════════════════════════════════ #}
+<div class="gcard mb-4" id="seccion-gantt">
+  <div class="gcard-header">
+    <span style="color:var(--blue)">📊</span>
+    <span class="gcard-title">Línea de tiempo de cursos</span>
+    <div style="margin-left:auto; display:flex; gap:.4rem; flex-wrap:wrap; align-items:center;">
+      <select id="gantt-filtro-curso" class="form-select"
+              style="font-size:.76rem; padding:.25rem .5rem; width:auto; min-width:140px;">
+        <option value="">Todos los cursos</option>
+      </select>
+      <button type="button" class="btn btn-g-ghost btn-sm" onclick="resetGanttFiltro()"
+              style="font-size:.74rem;">✕ Limpiar</button>
+      <button type="button" class="btn btn-g-primary btn-sm" onclick="abrirModalTarea()"
+              style="font-size:.74rem; white-space:nowrap;">＋ Tarea</button>
+    </div>
+  </div>
+
+  {# ── Modal añadir/editar tarea manual ── #}
+  <div id="modal-tarea" style="display:none; position:fixed; inset:0; z-index:9999;
+       background:rgba(0,0,0,.6); backdrop-filter:blur(4px);
+       align-items:center; justify-content:center; padding:1rem;"
+       onclick="if(event.target===this) cerrarModalTarea()">
+    <div style="background:var(--bg2); border:1px solid var(--border-soft); border-radius:14px;
+                width:100%; max-width:460px; box-shadow:0 24px 60px rgba(0,0,0,.5);
+                animation:slideUp .2s cubic-bezier(.22,1,.36,1) both;">
+      <div style="display:flex; align-items:center; gap:.6rem; padding:1rem 1.25rem;
+                  border-bottom:1px solid var(--border-soft);">
+        <span style="font-size:1.1rem;">📌</span>
+        <span id="modal-tarea-titulo" style="font-weight:700; font-size:.95rem;">Nueva tarea</span>
+        <button onclick="cerrarModalTarea()" style="margin-left:auto; background:none; border:none;
+                cursor:pointer; color:var(--text-muted); font-size:1.2rem; line-height:1;">✕</button>
+      </div>
+      <div style="padding:1.1rem 1.25rem; display:flex; flex-direction:column; gap:.75rem;">
+        <div>
+          <label style="font-size:.76rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:.3rem;">Nombre de la tarea *</label>
+          <input id="mt-nombre" class="form-control" placeholder="Ej: Revisión seguimiento, Reunión…" autocomplete="off">
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:.6rem;">
+          <div>
+            <label style="font-size:.76rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:.3rem;">Fecha inicio *</label>
+            <input id="mt-inicio" type="date" class="form-control">
+          </div>
+          <div>
+            <label style="font-size:.76rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:.3rem;">Fecha fin *</label>
+            <input id="mt-fin" type="date" class="form-control">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:.76rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:.3rem;">Color</label>
+          <div style="display:flex; gap:.5rem; flex-wrap:wrap;" id="mt-colores">
+            <button type="button" class="mt-color-btn active" data-color="0"
+                    style="width:28px;height:28px;border-radius:6px;border:2px solid #58a6ff;background:rgba(88,166,255,.4);cursor:pointer;" title="Azul"></button>
+            <button type="button" class="mt-color-btn" data-color="1"
+                    style="width:28px;height:28px;border-radius:6px;border:2px solid #3fb950;background:rgba(63,185,80,.4);cursor:pointer;" title="Verde"></button>
+            <button type="button" class="mt-color-btn" data-color="2"
+                    style="width:28px;height:28px;border-radius:6px;border:2px solid #f85149;background:rgba(248,81,73,.4);cursor:pointer;" title="Rojo"></button>
+            <button type="button" class="mt-color-btn" data-color="3"
+                    style="width:28px;height:28px;border-radius:6px;border:2px solid #d29922;background:rgba(210,153,34,.4);cursor:pointer;" title="Ámbar"></button>
+            <button type="button" class="mt-color-btn" data-color="4"
+                    style="width:28px;height:28px;border-radius:6px;border:2px solid #bc8cff;background:rgba(188,140,255,.4);cursor:pointer;" title="Violeta"></button>
+            <button type="button" class="mt-color-btn" data-color="5"
+                    style="width:28px;height:28px;border-radius:6px;border:2px solid #ffa657;background:rgba(255,166,87,.4);cursor:pointer;" title="Naranja"></button>
+          </div>
+        </div>
+        <div id="mt-error" style="display:none; font-size:.78rem; color:var(--red); padding:.4rem .6rem;
+             background:rgba(248,81,73,.1); border-radius:6px; border-left:3px solid var(--red);"></div>
+      </div>
+      <div style="padding:.85rem 1.25rem; border-top:1px solid var(--border-soft);
+                  display:flex; gap:.5rem; justify-content:flex-end;">
+        <button type="button" class="btn btn-g-ghost btn-sm" onclick="cerrarModalTarea()">Cancelar</button>
+        <button type="button" id="mt-btn-eliminar" class="btn btn-g-danger btn-sm"
+                style="display:none;" onclick="eliminarTareaManual()">🗑 Eliminar</button>
+        <button type="button" class="btn btn-g-primary btn-sm" onclick="guardarTareaManual()">💾 Guardar</button>
+      </div>
+    </div>
+  </div>
+  <div class="gcard-body" style="padding:.75rem 1.25rem 1.25rem; overflow-x:auto;">
+    <div id="gantt-wrap" style="position:relative; min-width:500px;">
+      <canvas id="gantt-chart"></canvas>
+    </div>
+    <div id="gantt-empty" style="display:none; text-align:center; padding:2rem; color:var(--text-muted); font-size:.85rem;">
+      Sin datos de cursos disponibles.
+    </div>
+  </div>
+</div>
+
+
+{# ── Modal popup de curso ── #}
+<div id="modal-curso" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.6); backdrop-filter:blur(4px);
+     align-items:center; justify-content:center; padding:1rem;"
+     onclick="if(event.target===this) cerrarModalCurso()">
+  <div style="background:var(--bg2); border:1px solid var(--border-soft); border-radius:16px;
+              width:100%; max-width:420px; box-shadow:0 24px 60px rgba(0,0,0,.5);
+              animation:slideUp .2s cubic-bezier(.22,1,.36,1) both; overflow:hidden;">
+
+    {# Cabecera coloreada #}
+    <div id="mc-header" style="padding:1.1rem 1.25rem; position:relative;">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:.5rem;">
+        <div>
+          <div id="mc-nombre" style="font-weight:800; font-size:1rem; line-height:1.3;"></div>
+          <div id="mc-estado-badge" style="margin-top:.35rem;"></div>
+        </div>
+        <button onclick="cerrarModalCurso()" style="background:none;border:none;cursor:pointer;
+                color:rgba(255,255,255,.7);font-size:1.2rem;line-height:1;flex-shrink:0;
+                padding:.2rem .3rem;border-radius:6px;transition:background .15s;"
+                onmouseover="this.style.background='rgba(255,255,255,.15)'"
+                onmouseout="this.style.background='none'">✕</button>
+      </div>
+    </div>
+
+    <div style="padding:1rem 1.25rem; display:flex; flex-direction:column; gap:.85rem;">
+
+      {# Fechas #}
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.6rem;">
+        <div style="background:var(--bg3); border-radius:10px; padding:.65rem .85rem;">
+          <div style="font-size:.68rem; font-weight:700; color:var(--text-muted);
+                      text-transform:uppercase; letter-spacing:.06em; margin-bottom:.2rem;">▶ Inicio</div>
+          <div id="mc-inicio" style="font-family:var(--mono); font-size:.88rem; font-weight:700;"></div>
+        </div>
+        <div style="background:var(--bg3); border-radius:10px; padding:.65rem .85rem;">
+          <div style="font-size:.68rem; font-weight:700; color:var(--text-muted);
+                      text-transform:uppercase; letter-spacing:.06em; margin-bottom:.2rem;">■ Fin</div>
+          <div id="mc-fin" style="font-family:var(--mono); font-size:.88rem; font-weight:700;"></div>
+        </div>
+      </div>
+
+      {# Progreso de días #}
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem;">
+          <span style="font-size:.74rem; font-weight:700; color:var(--text-muted);
+                       text-transform:uppercase; letter-spacing:.06em;">Progreso del curso</span>
+          <span id="mc-pct-txt" style="font-family:var(--mono); font-size:.82rem; font-weight:800;"></span>
+        </div>
+        <div style="height:8px; background:var(--bg3); border-radius:99px; overflow:hidden;">
+          <div id="mc-barra" style="height:100%; border-radius:99px;
+                                    transition:width .7s cubic-bezier(.22,1,.36,1);"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-top:.4rem;
+                    font-family:var(--mono); font-size:.7rem; color:var(--text-muted);">
+          <span id="mc-dias-trans"></span>
+          <span id="mc-dias-rest"></span>
+        </div>
+      </div>
+
+      {# Resumen de estado #}
+      <div id="mc-resumen" style="font-size:.82rem; line-height:1.55; padding:.6rem .85rem;
+           border-radius:10px; border-left:3px solid; background:var(--bg3);"></div>
+
+      {# Alumnos #}
+      <div id="mc-alumnos-wrap" style="display:none;">
+        <div style="font-size:.68rem; font-weight:700; color:var(--text-muted);
+                    text-transform:uppercase; letter-spacing:.06em; margin-bottom:.4rem;">👤 Alumnos en este curso</div>
+        <div id="mc-alumnos" style="display:flex; flex-wrap:wrap; gap:.3rem;"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<style>
+@keyframes slideUp {
+  from { opacity:0; transform:translateY(16px) scale(.97); }
+  to   { opacity:1; transform:translateY(0) scale(1); }
+}
+</style>
+
 {% if total == 0 %}
 <div class="gcard">
   <div class="gcard-body" style="text-align:center; padding:3.5rem 1rem;">
@@ -83,357 +318,700 @@
   </div>
 </div>
 
-{% else %}
 
-{# ── BARRA DE CONTROL: filtros + búsqueda + orden + página ── #}
-<div class="gcard mb-3">
-  <div class="gcard-body" style="padding:1rem 1.25rem;">
-    <div class="row g-2 align-items-end">
+{% endif %}
 
-      {# Búsqueda libre #}
-      <div class="col-12 col-md-4">
-        <div class="search-wrap">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="buscador" class="form-control"
-                 placeholder="Buscar alumno, curso, título…">
-        </div>
-      </div>
-
-      {# Filtro prioridad / estado #}
-      <div class="col-6 col-md-2">
-        <select id="sel-filtro" class="form-select">
-          <option value="todas">Todas ({{ total }})</option>
-          <option value="pendientes">⏳ Pendientes ({{ pendientes }})</option>
-          <option value="completadas">✅ Hechas ({{ hechas }})</option>
-          <option value="1">🔴 Crítico ({{ criticas|length }})</option>
-          <option value="2">🟡 Urgente ({{ urgentes|length }})</option>
-          <option value="3">🔵 Info ({{ informativas|length }})</option>
-        </select>
-      </div>
-
-      {# Orden #}
-      <div class="col-6 col-md-2">
-        <select id="sel-orden" class="form-select">
-          <option value="prioridad_asc">🔴 Prioridad (alta→baja)</option>
-          <option value="prioridad_desc">🔵 Prioridad (baja→alta)</option>
-          <option value="dias_asc">📅 Días restantes ↑</option>
-          <option value="dias_desc">📅 Días restantes ↓</option>
-          <option value="alumno_asc">👤 Alumno A→Z</option>
-          <option value="alumno_desc">👤 Alumno Z→A</option>
-          <option value="curso_asc">📚 Curso A→Z</option>
-        </select>
-      </div>
-
-      {# Por página #}
-      <div class="col-6 col-md-2">
-        <select id="sel-perpage" class="form-select">
-          <option value="10">10 por página</option>
-          <option value="20" selected>20 por página</option>
-          <option value="50">50 por página</option>
-          <option value="9999">Ver todas</option>
-        </select>
-      </div>
-
-      {# Limpiar #}
-      <div class="col-6 col-md-2">
-        <button onclick="limpiarFiltros()" class="btn btn-g-ghost w-100">✕ Limpiar</button>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-{# ── Info de resultados + paginación superior ── #}
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2" id="pag-top-wrap" style="display:none!important;">
-  <span id="pag-info-top" style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted);"></span>
-  <ul class="gpagination" id="pag-top" style="margin:0;"></ul>
-</div>
-
-{# ── CONTENEDOR ÚNICO DE TARJETAS ── #}
-<div id="alarmas-container">
-
-  {# Macro para evitar repetir HTML #}
-  {% macro card(a) %}
-  <div class="alarma-card {% if a.completada %}completada{% endif %}"
-       data-prioridad="{{ a.prioridad }}"
-       data-completada="{{ '1' if a.completada else '0' }}"
-       data-alumno="{{ a.alumno_nombre | lower }}"
-       data-curso="{{ a.curso | lower }}"
-       data-titulo="{{ a.titulo | lower }}"
-       data-dias="{{ a.dias_restantes if a.dias_restantes is not none else 9999 }}"
-       data-search="{{ a.alumno_nombre | lower }} {{ a.curso | lower }} {{ a.titulo | lower }} {{ a.descripcion | lower }}">
-    <div class="alarma-inner">
-      <div class="alarma-stripe stripe-{{ a.prioridad }}"></div>
-      <div class="alarma-body">
-        <div class="alarma-titulo">{{ a.emoji }} {{ a.titulo }}</div>
-        <div class="alarma-desc">{{ a.descripcion }}</div>
-        <div class="alarma-accion">→ {{ a.accion }}</div>
-        <div class="alarma-meta">
-          <span class="badge-g badge-cat" style="font-size:.67rem;">{{ a.curso }}</span>
-          {% if a.alumno_id %}
-            <span style="font-size:.75rem; font-weight:600;">👤 {{ a.alumno_nombre }}</span>
-          {% else %}
-            <span style="font-size:.75rem; font-weight:600; color:var(--text-muted);">📚 {{ a.alumno_nombre }}</span>
-          {% endif %}
-          {% if a.dias_restantes is not none %}
-            <span style="font-family:var(--mono); font-size:.71rem;
-                  color:{% if a.dias_restantes < 0 %}var(--red){% elif a.dias_restantes <= 7 %}var(--amber){% else %}var(--text-muted){% endif %};">
-              {% if a.dias_restantes < 0 %}
-                🔴 Venció hace {{ a.dias_restantes | abs }} día{{ 's' if (a.dias_restantes | abs) != 1 else '' }}
-              {% elif a.dias_restantes == 0 %}
-                🟡 Vence hoy
-              {% else %}
-                📅 {{ a.dias_restantes }} día{{ 's' if a.dias_restantes != 1 else '' }} restante{{ 's' if a.dias_restantes != 1 else '' }}
-              {% endif %}
-            </span>
-          {% endif %}
-          {% if a.telefono %}
-            <span style="font-size:.7rem; color:var(--text-muted); font-family:var(--mono);">📱 {{ a.telefono }}</span>
-          {% elif a.alumno_id and a.tipo != 'sin_telefono' %}
-            <span style="font-size:.7rem; color:var(--red);">⚠ sin teléfono</span>
-          {% endif %}
-        </div>
-      </div>
-      <div class="alarma-actions">
-        {% if a.wa_link %}
-          <a href="{{ a.wa_link }}" target="_blank"
-             class="btn btn-g-success btn-sm"
-             style="white-space:nowrap; font-size:.76rem;">💬 Enviar WA</a>
-        {% endif %}
-        {% if a.alumno_id and not a.wa_link and a.telefono == '' %}
-          <a href="{{ url_for('formacion.formacion') }}"
-             class="btn btn-g-ghost btn-sm"
-             style="font-size:.74rem; white-space:nowrap;">✏ Registrar tel.</a>
-        {% endif %}
-        <form method="POST" action="{{ url_for('formacion.alarma_completar') }}">
-          <input type="hidden" name="clave" value="{{ a.clave }}">
-          {% if a.completada %}
-            <input type="hidden" name="accion" value="deshacer">
-            <button type="submit" class="btn btn-g-ghost btn-sm"
-                    style="white-space:nowrap; font-size:.74rem;">↩ Deshacer</button>
-          {% else %}
-            <input type="hidden" name="accion" value="completar">
-            <button type="submit" class="btn btn-g-primary btn-sm"
-                    style="white-space:nowrap; font-size:.74rem;">✔ Listo</button>
-          {% endif %}
-        </form>
-      </div>
-    </div>
-  </div>
-  {% endmacro %}
-
-  {# Renderizar TODAS las tarjetas en orden natural (prioridad) #}
-  {% for a in criticas %}{{ card(a) }}{% endfor %}
-  {% for a in urgentes %}{{ card(a) }}{% endfor %}
-  {% for a in informativas %}{{ card(a) }}{% endfor %}
-
-</div>{# /alarmas-container #}
-
-{# Sin resultados #}
-<div id="no-results" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
-  <div style="font-size:1.8rem; margin-bottom:.4rem;">🔍</div>
-  No hay alarmas que coincidan con los filtros aplicados.
-</div>
-
-{# Paginación inferior #}
-<div id="pag-bottom-wrap" style="display:none; margin-top:1rem;">
-  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-    <span id="pag-info-bot" style="font-family:var(--mono); font-size:.74rem; color:var(--text-muted);"></span>
-    <ul class="gpagination" id="pag-bottom" style="margin:0;"></ul>
-  </div>
-</div>
-
-{% endif %}{# end if total > 0 #}
-
-{% endblock %}
-
-{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <script>
 // ════════════════════════════════════════════════════════════════════
-//  CONTROL: búsqueda + filtro + orden + paginación
+//  CALENDARIO DE CURSOS — colores por curso
 // ════════════════════════════════════════════════════════════════════
 
-const inputBuscar  = document.getElementById('buscador');
-const selFiltro    = document.getElementById('sel-filtro');
-const selOrden     = document.getElementById('sel-orden');
-const selPerPage   = document.getElementById('sel-perpage');
-const container    = document.getElementById('alarmas-container');
-const noResults    = document.getElementById('no-results');
-const pagTopWrap   = document.getElementById('pag-top-wrap');
-const pagBotWrap   = document.getElementById('pag-bottom-wrap');
-const pagInfoTop   = document.getElementById('pag-info-top');
-const pagInfoBot   = document.getElementById('pag-info-bot');
-const pagTop       = document.getElementById('pag-top');
-const pagBot       = document.getElementById('pag-bottom');
+let calEventos     = [];
+let calNotas       = [];
+let calAno         = new Date().getFullYear();
+let calMes         = new Date().getMonth();
+let calFechaActiva = null;
+let cursoPaleta    = {};   // curso → { bg, border, text }
 
-if (!container) {
-  // total === 0, no hay nada que controlar
-  void 0;
-} else {
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-const allCards = Array.from(container.querySelectorAll('.alarma-card'));
-let currentPage = 1;
+// Paleta de colores vibrantes para cursos
+const PALETA = [
+  { bg:'rgba(88,166,255,.18)',  border:'#58a6ff', text:'#58a6ff'  },
+  { bg:'rgba(63,185,80,.18)',   border:'#3fb950', text:'#3fb950'  },
+  { bg:'rgba(248,81,73,.18)',   border:'#f85149', text:'#f85149'  },
+  { bg:'rgba(210,153,34,.22)',  border:'#d29922', text:'#d29922'  },
+  { bg:'rgba(188,140,255,.2)',  border:'#bc8cff', text:'#bc8cff'  },
+  { bg:'rgba(255,123,114,.2)',  border:'#ff7b72', text:'#ff7b72'  },
+  { bg:'rgba(79,201,209,.2)',   border:'#4fc9d1', text:'#4fc9d1'  },
+  { bg:'rgba(255,166,87,.2)',   border:'#ffa657', text:'#ffa657'  },
+  { bg:'rgba(240,86,164,.2)',   border:'#f056a4', text:'#f056a4'  },
+  { bg:'rgba(100,200,150,.2)',  border:'#64c896', text:'#64c896'  },
+];
 
-// ── Filtrar ──────────────────────────────────────────────────────
-function filteredCards() {
-  const q       = inputBuscar.value.toLowerCase().trim();
-  const filtro  = selFiltro.value;
-
-  return allCards.filter(card => {
-    // Búsqueda libre
-    const matchQ = !q || card.dataset.search.includes(q);
-
-    // Filtro de pestaña
-    let matchF = true;
-    if      (filtro === 'pendientes')  matchF = card.dataset.completada === '0';
-    else if (filtro === 'completadas') matchF = card.dataset.completada === '1';
-    else if (filtro === '1' || filtro === '2' || filtro === '3')
-                                        matchF = card.dataset.prioridad === filtro;
-    // 'todas' → matchF = true por defecto
-
-    return matchQ && matchF;
+function asignarPaleta(eventos) {
+  const cursos = [...new Set(eventos.map(e => e.curso))];
+  cursos.forEach((curso, i) => {
+    cursoPaleta[curso] = PALETA[i % PALETA.length];
   });
+  // Actualizar leyenda
+  const leyenda = document.getElementById('cal-leyenda');
+  if (!leyenda) return;
+  leyenda.innerHTML = cursos.map(curso => {
+    const col = cursoPaleta[curso];
+    return `<span style="display:flex;align-items:center;gap:.3rem;">
+      <span style="width:10px;height:10px;border-radius:3px;background:${col.border};display:inline-block;flex-shrink:0;"></span>
+      <span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${curso}">${curso}</span>
+    </span>`;
+  }).join('');
 }
 
-// ── Ordenar ──────────────────────────────────────────────────────
-function sortCards(cards) {
-  const orden = selOrden.value;
-  return [...cards].sort((a, b) => {
-    switch (orden) {
-      case 'prioridad_asc':
-        return parseInt(a.dataset.prioridad) - parseInt(b.dataset.prioridad);
-      case 'prioridad_desc':
-        return parseInt(b.dataset.prioridad) - parseInt(a.dataset.prioridad);
-      case 'dias_asc':
-        return parseInt(a.dataset.dias) - parseInt(b.dataset.dias);
-      case 'dias_desc':
-        return parseInt(b.dataset.dias) - parseInt(a.dataset.dias);
-      case 'alumno_asc':
-        return a.dataset.alumno.localeCompare(b.dataset.alumno);
-      case 'alumno_desc':
-        return b.dataset.alumno.localeCompare(a.dataset.alumno);
-      case 'curso_asc':
-        return a.dataset.curso.localeCompare(b.dataset.curso);
-      default:
-        return 0;
-    }
-  });
-}
-
-// ── Renderizar ───────────────────────────────────────────────────
-function render() {
-  const perPage = parseInt(selPerPage.value);
-  const filtered = filteredCards();
-  const sorted   = sortCards(filtered);
-  const total    = sorted.length;
-  const pages    = perPage >= 9000 ? 1 : Math.ceil(total / perPage) || 1;
-
-  if (currentPage > pages) currentPage = pages;
-
-  const start = perPage >= 9000 ? 0     : (currentPage - 1) * perPage;
-  const end   = perPage >= 9000 ? total : Math.min(start + perPage, total);
-
-  // Ocultar todas
-  allCards.forEach(c => { c.style.display = 'none'; });
-
-  // Reordenar en el DOM y mostrar las de la página
-  sorted.forEach((card, idx) => {
-    container.appendChild(card);          // mueve al final (mantiene orden)
-    card.style.display = (idx >= start && idx < end) ? '' : 'none';
-  });
-
-  // Sin resultados
-  noResults.style.display = (total === 0) ? '' : 'none';
-
-  // Info
-  const infoText = perPage >= 9000 || pages <= 1
-    ? `${total} alarma${total !== 1 ? 's' : ''}`
-    : `Mostrando ${start + 1}–${end} de ${total} alarma${total !== 1 ? 's' : ''}`;
-
-  if (pagInfoTop) pagInfoTop.textContent = infoText;
-  if (pagInfoBot) pagInfoBot.textContent = infoText;
-
-  // Mostrar/ocultar paginación
-  const showPag = pages > 1 && perPage < 9000;
-  if (pagTopWrap) pagTopWrap.style.setProperty('display', showPag ? 'flex' : 'none', 'important');
-  if (pagBotWrap) pagBotWrap.style.display = showPag ? '' : 'none';
-
-  if (showPag) {
-    buildPagination(pagTop,  pages);
-    buildPagination(pagBot,  pages);
+async function cargarCalendarData() {
+  try {
+    const res  = await fetch("{{ url_for('formacion.formacion_calendar_data') }}");
+    const data = await res.json();
+    calEventos = data.eventos || [];
+    calNotas   = data.notas   || [];
+    asignarPaleta(calEventos);
+    renderCalendario();
+    buildGantt(calEventos, calNotas);
+  } catch(e) {
+    console.error("Error cargando calendario:", e);
   }
 }
 
-// ── Construir controles de página ─────────────────────────────────
-function buildPagination(ul, pages) {
-  ul.innerHTML = '';
+function cambiarMes(delta) {
+  calMes += delta;
+  if (calMes < 0)  { calMes = 11; calAno--; }
+  if (calMes > 11) { calMes = 0;  calAno++; }
+  renderCalendario();
+}
 
-  const addBtn = (label, page, disabled, active) => {
-    const li = document.createElement('li');
-    li.className = (disabled ? 'disabled ' : '') + (active ? 'active' : '');
-    const a = document.createElement('a');
-    a.className   = 'gpage-link';
-    a.textContent = label;
-    a.href        = '#';
-    a.addEventListener('click', e => {
-      e.preventDefault();
-      if (!disabled) { currentPage = page; render(); window.scrollTo({top:0, behavior:'smooth'}); }
+function irHoy() {
+  calAno = new Date().getFullYear();
+  calMes = new Date().getMonth();
+  renderCalendario();
+}
+
+function renderCalendario() {
+  document.getElementById('cal-titulo').textContent = `${MESES[calMes]} ${calAno}`;
+
+  const grid  = document.getElementById('cal-grid');
+  grid.querySelectorAll('.cal-day').forEach(c => c.remove());
+
+  const hoy       = new Date();
+  const primerDia = new Date(calAno, calMes, 1).getDay();
+  const offset    = primerDia === 0 ? 6 : primerDia - 1;
+  const diasMes   = new Date(calAno, calMes + 1, 0).getDate();
+
+  for (let i = 0; i < offset; i++) {
+    const el = document.createElement('div');
+    el.className = 'cal-day cal-empty';
+    el.style.cssText = 'min-height:72px;';
+    grid.appendChild(el);
+  }
+
+  for (let dia = 1; dia <= diasMes; dia++) {
+    const fechaStr = `${calAno}-${String(calMes+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+    const esHoy    = hoy.getFullYear()===calAno && hoy.getMonth()===calMes && hoy.getDate()===dia;
+    const activa   = calFechaActiva === fechaStr;
+    const evsDia   = calEventos.filter(e => e.fecha === fechaStr);
+    const notasDia = calNotas.filter(n => n.fecha === fechaStr);
+
+    const el = document.createElement('div');
+    el.className = 'cal-day';
+    el.dataset.fecha = fechaStr;
+    el.style.cssText = `
+      min-height:72px; padding:.3rem .4rem; border-radius:8px; cursor:pointer;
+      border:1px solid ${activa ? 'var(--accent)' : esHoy ? 'var(--blue)' : 'var(--border)'};
+      background:${activa ? 'rgba(63,185,80,.08)' : esHoy ? 'rgba(88,166,255,.06)' : 'var(--bg2)'};
+      transition:border-color .15s, background .15s; position:relative; overflow:hidden;
+    `;
+    el.onmouseover = () => { if (!activa) el.style.background = 'var(--bg3)'; };
+    el.onmouseout  = () => { if (!activa) el.style.background = esHoy ? 'rgba(88,166,255,.06)' : 'var(--bg2)'; };
+    el.onclick     = () => abrirDetalleDia(fechaStr);
+
+    // Número del día
+    const numEl = document.createElement('div');
+    numEl.textContent = dia;
+    numEl.style.cssText = `
+      font-family:var(--mono); font-size:.8rem; font-weight:${esHoy?'800':'600'};
+      color:${esHoy ? 'var(--blue)' : 'var(--text)'}; margin-bottom:.25rem;
+    `;
+    el.appendChild(numEl);
+
+    // Eventos del día — etiquetas con color del curso
+    evsDia.forEach(ev => {
+      const col = cursoPaleta[ev.curso] || PALETA[0];
+      const tag = document.createElement('div');
+      tag.style.cssText = `
+        font-size:.6rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        padding:.08rem .28rem; border-radius:4px; margin-bottom:.1rem;
+        background:${col.bg}; color:${col.text};
+        border-left:2px solid ${col.border};
+        font-weight:600;
+      `;
+      tag.textContent = `${ev.tipo==='inicio'?'▶':'■'} ${ev.curso}`;
+      tag.title = `${ev.tipo==='inicio'?'Inicio':'Fin'}: ${ev.curso}${ev.alumno?' · '+ev.alumno:''} — Clic para ver detalle`;
+      tag.onclick = (e) => { e.stopPropagation(); abrirModalCurso(ev.curso); };
+      el.appendChild(tag);
     });
-    li.appendChild(a);
-    ul.appendChild(li);
+
+    // Puntos de notas
+    if (notasDia.length) {
+      const nd = document.createElement('div');
+      nd.style.cssText = 'display:flex; gap:2px; margin-top:.15rem; flex-wrap:wrap;';
+      notasDia.forEach(n => {
+        const clrMap = {blue:'var(--blue)',green:'var(--accent)',red:'var(--red)',amber:'var(--amber)'};
+        const dot = document.createElement('span');
+        dot.style.cssText = `width:7px;height:7px;border-radius:50%;background:${clrMap[n.color]||'var(--amber)'};display:inline-block;`;
+        dot.title = n.nota;
+        nd.appendChild(dot);
+      });
+      el.appendChild(nd);
+    }
+
+    grid.appendChild(el);
+  }
+}
+
+function abrirDetalleDia(fecha) {
+  calFechaActiva = fecha;
+  renderCalendario();
+
+  const detalle    = document.getElementById('cal-detalle');
+  const detFecha   = document.getElementById('cal-det-fecha');
+  const detEventos = document.getElementById('cal-det-eventos');
+  const detNotas   = document.getElementById('cal-det-notas');
+
+  const [y,m,d] = fecha.split('-');
+  const diasSemana = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const ds = new Date(parseInt(y), parseInt(m)-1, parseInt(d)).getDay();
+  detFecha.textContent = `${diasSemana[ds].charAt(0).toUpperCase()+diasSemana[ds].slice(1)}, ${d}/${m}/${y}`;
+
+  // Eventos del día — agrupados con toda la info del curso
+  const evsDia = calEventos.filter(e => e.fecha === fecha);
+  if (evsDia.length) {
+    // Agrupar por curso para mostrar bloque completo
+    const porCurso = {};
+    evsDia.forEach(ev => {
+      if (!porCurso[ev.curso]) porCurso[ev.curso] = { inicio:null, fin:null, alumnos:[], col: cursoPaleta[ev.curso]||PALETA[0] };
+      if (ev.tipo === 'inicio') { porCurso[ev.curso].inicio = ev.fecha_real || fecha; }
+      if (ev.tipo === 'fin')    { porCurso[ev.curso].fin    = ev.fecha_real || fecha; }
+      if (ev.alumno) porCurso[ev.curso].alumnos.push(ev.alumno);
+    });
+
+    detEventos.innerHTML = Object.entries(porCurso).map(([curso, info]) => {
+      const col = info.col;
+      const tipoLabel = evsDia.filter(e=>e.curso===curso).map(e=>e.tipo==='inicio'?'<span style="color:'+col.text+';font-weight:700;">▶ Inicio de curso</span>':'<span style="color:'+col.text+';font-weight:700;">■ Fin de curso</span>').join(' · ');
+      const alumnosStr = info.alumnos.length
+        ? `<div style="font-size:.75rem;color:var(--text-muted);margin-top:.2rem;">👤 ${info.alumnos.join(', ')}</div>`
+        : '';
+      return `
+        <div style="border-left:3px solid ${col.border};background:${col.bg};
+                    border-radius:0 8px 8px 0;padding:.5rem .75rem;margin-bottom:.4rem;">
+          <div style="font-size:.82rem;font-weight:700;color:var(--text);margin-bottom:.15rem;">${curso}</div>
+          <div style="font-size:.77rem;">${tipoLabel}</div>
+          ${alumnosStr}
+        </div>`;
+    }).join('');
+  } else {
+    detEventos.innerHTML = '<div style="font-size:.8rem;color:var(--text-muted);">Sin eventos de cursos este día.</div>';
+  }
+
+  // Notas del día
+  const notasDia = calNotas.filter(n => n.fecha === fecha);
+  const clrMap = {blue:'var(--blue)',green:'var(--accent)',red:'var(--red)',amber:'var(--amber)'};
+  if (notasDia.length) {
+    detNotas.innerHTML = `<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:.5rem 0 .3rem;">Notas</div>` +
+      notasDia.map(n => {
+        const clr = clrMap[n.color] || 'var(--amber)';
+        return `
+          <div style="display:flex;align-items:flex-start;gap:.4rem;margin-bottom:.3rem;
+                      background:var(--bg3);border-radius:8px;padding:.4rem .6rem;border-left:3px solid ${clr};">
+            <span style="flex:1;font-size:.82rem;">${n.nota}</span>
+            <button type="button" onclick="editarNota(${n.id},'${n.nota.replace(/'/g,"&#39;")}','${n.color}')"
+                    style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:.8rem;padding:0;">✏</button>
+            <button type="button" onclick="borrarNota(${n.id})"
+                    style="background:none;border:none;cursor:pointer;color:var(--red);font-size:.8rem;padding:0;">🗑</button>
+          </div>`;
+      }).join('');
+  } else {
+    detNotas.innerHTML = '';
+  }
+
+  document.getElementById('cal-nota-texto').value = '';
+  document.getElementById('cal-nota-id').value    = '';
+  document.getElementById('cal-nota-color').value = 'amber';
+  detalle.style.display = '';
+  document.getElementById('cal-nota-texto').focus();
+}
+
+function cerrarDetalle() {
+  calFechaActiva = null;
+  document.getElementById('cal-detalle').style.display = 'none';
+  renderCalendario();
+}
+
+function editarNota(id, texto, color) {
+  document.getElementById('cal-nota-texto').value = texto;
+  document.getElementById('cal-nota-color').value = color;
+  document.getElementById('cal-nota-id').value    = id;
+  document.getElementById('cal-nota-texto').focus();
+}
+
+async function guardarNota() {
+  const texto  = document.getElementById('cal-nota-texto').value.trim();
+  const color  = document.getElementById('cal-nota-color').value;
+  const notaId = document.getElementById('cal-nota-id').value;
+  const fecha  = calFechaActiva;
+  if (!texto || !fecha) return;
+  const body = { fecha, nota: texto, color };
+  if (notaId) body.nota_id = parseInt(notaId);
+  try {
+    const res  = await fetch("{{ url_for('formacion.guardar_nota_calendario') }}", {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (notaId) {
+        const idx = calNotas.findIndex(n => n.id === parseInt(notaId));
+        if (idx >= 0) { calNotas[idx].nota = texto; calNotas[idx].color = color; }
+      } else {
+        calNotas.push({ id: data.id, fecha, nota: texto, color });
+      }
+      document.getElementById('cal-nota-id').value = '';
+      abrirDetalleDia(fecha);
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function borrarNota(id) {
+  if (!confirm('¿Eliminar esta nota?')) return;
+  try {
+    const res  = await fetch(`/formacion/calendario/nota/borrar/${id}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      calNotas = calNotas.filter(n => n.id !== id);
+      abrirDetalleDia(calFechaActiva);
+    }
+  } catch(e) { console.error(e); }
+}
+
+
+
+// ════════════════════════════════════════════════════════════════════
+//  POPUP DE DETALLE DE CURSO
+// ════════════════════════════════════════════════════════════════════
+
+function abrirModalCurso(nombreCurso) {
+  // Buscar eventos del curso
+  const evs = calEventos.filter(e => e.curso === nombreCurso);
+  if (!evs.length) return;
+
+  const col = cursoPaleta[nombreCurso] || PALETA[0];
+
+  // Calcular fechas reales inicio/fin del curso
+  const fechasInicio = evs.filter(e => e.tipo === 'inicio').map(e => e.fecha).sort();
+  const fechasFin    = evs.filter(e => e.tipo === 'fin').map(e => e.fecha).sort();
+  const inicioStr    = fechasInicio[0] || null;
+  const finStr       = fechasFin[fechasFin.length - 1] || null;
+
+  const hoy   = new Date(); hoy.setHours(0,0,0,0);
+  const iniD  = inicioStr ? new Date(inicioStr) : null;
+  const finD  = finStr    ? new Date(finStr)    : null;
+
+  // Calcular progreso en días
+  let pct = 0, diasTrans = 0, diasRest = 0, diasTotal = 0;
+  if (iniD && finD) {
+    diasTotal  = Math.max(1, Math.round((finD - iniD) / 86400000));
+    diasTrans  = Math.max(0, Math.round((hoy  - iniD) / 86400000));
+    diasRest   = Math.max(0, Math.round((finD - hoy)  / 86400000));
+    pct        = Math.min(100, Math.round(diasTrans / diasTotal * 100));
+  }
+
+  // Estado
+  let estado, estadoColor, resumen;
+  if (!iniD) {
+    estado = '⏳ Sin fecha de inicio'; estadoColor = 'var(--text-muted)';
+    resumen = 'No hay fecha de inicio registrada para este curso.';
+  } else if (hoy < iniD) {
+    const dias = Math.round((iniD - hoy) / 86400000);
+    estado = `🔵 Empieza en ${dias} día${dias!==1?'s':''}`; estadoColor = '#58a6ff';
+    resumen = `El curso todavía no ha comenzado. Arranca el ${fmtFecha(inicioStr)}.`;
+  } else if (finD && hoy > finD) {
+    estado = '⬛ Curso finalizado'; estadoColor = 'var(--text-muted)';
+    resumen = `El curso concluyó el ${fmtFecha(finStr)}, hace ${Math.round((hoy - finD)/86400000)} día${Math.round((hoy-finD)/86400000)!==1?'s':''}.`;
+  } else if (pct >= 75) {
+    estado = '🟢 En tramo final'; estadoColor = 'var(--accent)';
+    resumen = `El curso está en su recta final. Quedan ${diasRest} día${diasRest!==1?'s':''} para completarlo. Buen momento para hacer seguimiento de alumnos rezagados.`;
+  } else if (pct >= 40) {
+    estado = '🟡 En progreso'; estadoColor = 'var(--amber)';
+    resumen = `El curso lleva ${diasTrans} día${diasTrans!==1?'s':''} activo y está a mitad de camino. Quedan ${diasRest} día${diasRest!==1?'s':''} para su finalización.`;
+  } else {
+    estado = '🔴 Inicio reciente'; estadoColor = 'var(--red)';
+    resumen = `El curso acaba de empezar (${diasTrans} día${diasTrans!==1?'s':''} activo). Todavía quedan ${diasRest} día${diasRest!==1?'s':''} por delante.`;
+  }
+
+  // Alumnos únicos
+  const alumnos = [...new Set(evs.map(e => e.alumno).filter(Boolean))];
+
+  // ── Rellenar modal ──
+  document.getElementById('mc-header').style.background =
+    `linear-gradient(135deg, ${col.border}33, ${col.border}18)`;
+  document.getElementById('mc-header').style.borderBottom = `2px solid ${col.border}55`;
+
+  document.getElementById('mc-nombre').textContent = nombreCurso;
+  document.getElementById('mc-estado-badge').innerHTML =
+    `<span style="font-size:.72rem; font-weight:700; color:${estadoColor}; background:${estadoColor}22;
+                  padding:.15rem .55rem; border-radius:99px; border:1px solid ${estadoColor}44;">
+      ${estado}
+    </span>`;
+
+  document.getElementById('mc-inicio').textContent = inicioStr ? fmtFecha(inicioStr) : '—';
+  document.getElementById('mc-fin').textContent    = finStr    ? fmtFecha(finStr)    : '—';
+
+  // Barra de progreso
+  const barColor = pct >= 75 ? 'var(--accent)' : pct >= 40 ? 'var(--amber)' : '#58a6ff';
+  const barEl = document.getElementById('mc-barra');
+  barEl.style.width      = '0%';
+  barEl.style.background = barColor;
+  setTimeout(() => { barEl.style.width = pct + '%'; }, 50);
+
+  document.getElementById('mc-pct-txt').style.color = barColor;
+  document.getElementById('mc-pct-txt').textContent = pct + '%';
+  document.getElementById('mc-dias-trans').textContent =
+    diasTrans > 0 ? `${diasTrans} día${diasTrans!==1?'s':''} transcurridos` : 'No iniciado';
+  document.getElementById('mc-dias-rest').textContent =
+    diasRest > 0 ? `${diasRest} día${diasRest!==1?'s':''} restantes` : (finD && hoy > finD ? 'Finalizado' : '');
+
+  const resumenEl = document.getElementById('mc-resumen');
+  resumenEl.textContent        = resumen;
+  resumenEl.style.borderColor  = estadoColor;
+  resumenEl.style.color        = 'var(--text)';
+
+  // Alumnos
+  const alumnosWrap = document.getElementById('mc-alumnos-wrap');
+  const alumnosEl   = document.getElementById('mc-alumnos');
+  if (alumnos.length) {
+    alumnosEl.innerHTML = alumnos.map(a =>
+      `<span style="font-size:.74rem; background:var(--bg3); border:1px solid var(--border);
+                    border-radius:99px; padding:.15rem .55rem; white-space:nowrap;">${a}</span>`
+    ).join('');
+    alumnosWrap.style.display = '';
+  } else {
+    alumnosWrap.style.display = 'none';
+  }
+
+  document.getElementById('modal-curso').style.display = 'flex';
+}
+
+function cerrarModalCurso() {
+  document.getElementById('modal-curso').style.display = 'none';
+}
+
+function fmtFecha(str) {
+  if (!str) return '—';
+  const [y,m,d] = str.split('-');
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${parseInt(d)} ${meses[parseInt(m)-1]} ${y}`;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  GRÁFICO GANTT DE CURSOS
+// ════════════════════════════════════════════════════════════════════
+
+let ganttChart        = null;
+let ganttCursosActivos = [];
+let tareasManuales     = JSON.parse(localStorage.getItem('gantt_tareas_manuales') || '[]');
+let mtEditIndex        = -1;   // -1 = nueva, >=0 = editar
+let mtColorSel         = 0;
+
+function abrirModalTarea(idx) {
+  mtEditIndex = (idx !== undefined) ? idx : -1;
+  const modal = document.getElementById('modal-tarea');
+  const btnEl = document.getElementById('mt-btn-eliminar');
+  document.getElementById('modal-tarea-titulo').textContent = mtEditIndex >= 0 ? 'Editar tarea' : 'Nueva tarea';
+  btnEl.style.display = mtEditIndex >= 0 ? '' : 'none';
+
+  if (mtEditIndex >= 0) {
+    const t = tareasManuales[mtEditIndex];
+    document.getElementById('mt-nombre').value  = t.nombre;
+    document.getElementById('mt-inicio').value  = t.inicio;
+    document.getElementById('mt-fin').value     = t.fin;
+    mtColorSel = t.colorIdx || 0;
+  } else {
+    document.getElementById('mt-nombre').value = '';
+    document.getElementById('mt-inicio').value = '';
+    document.getElementById('mt-fin').value    = '';
+    mtColorSel = 0;
+  }
+  document.getElementById('mt-error').style.display = 'none';
+  // Resaltar color seleccionado
+  document.querySelectorAll('.mt-color-btn').forEach(b => {
+    b.style.outline = parseInt(b.dataset.color) === mtColorSel ? '3px solid white' : 'none';
+  });
+  modal.style.display = 'flex';
+  document.getElementById('mt-nombre').focus();
+}
+
+function cerrarModalTarea() {
+  document.getElementById('modal-tarea').style.display = 'none';
+}
+
+function guardarTareaManual() {
+  const nombre = document.getElementById('mt-nombre').value.trim();
+  const inicio = document.getElementById('mt-inicio').value;
+  const fin    = document.getElementById('mt-fin').value;
+  const err    = document.getElementById('mt-error');
+
+  if (!nombre) { err.textContent = 'El nombre es obligatorio.'; err.style.display=''; return; }
+  if (!inicio) { err.textContent = 'La fecha de inicio es obligatoria.'; err.style.display=''; return; }
+  if (!fin)    { err.textContent = 'La fecha de fin es obligatoria.'; err.style.display=''; return; }
+  if (fin < inicio) { err.textContent = 'La fecha de fin no puede ser anterior al inicio.'; err.style.display=''; return; }
+
+  const tarea = { nombre, inicio, fin, colorIdx: mtColorSel, manual: true };
+  if (mtEditIndex >= 0) {
+    tareasManuales[mtEditIndex] = tarea;
+  } else {
+    tareasManuales.push(tarea);
+  }
+  localStorage.setItem('gantt_tareas_manuales', JSON.stringify(tareasManuales));
+  cerrarModalTarea();
+  buildGantt(calEventos, calNotas);
+}
+
+function eliminarTareaManual() {
+  if (mtEditIndex < 0) return;
+  if (!confirm('¿Eliminar esta tarea?')) return;
+  tareasManuales.splice(mtEditIndex, 1);
+  localStorage.setItem('gantt_tareas_manuales', JSON.stringify(tareasManuales));
+  cerrarModalTarea();
+  buildGantt(calEventos, calNotas);
+}
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.mt-color-btn');
+  if (!btn) return;
+  mtColorSel = parseInt(btn.dataset.color);
+  document.querySelectorAll('.mt-color-btn').forEach(b => {
+    b.style.outline = parseInt(b.dataset.color) === mtColorSel ? '3px solid white' : 'none';
+  });
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { cerrarModalTarea(); cerrarModalCurso(); }
+});
+
+function buildGantt(eventos, notas) {
+  const wrap   = document.getElementById('gantt-wrap');
+  const empty  = document.getElementById('gantt-empty');
+  const select = document.getElementById('gantt-filtro-curso');
+  if (!wrap) return;
+
+  // Construir rangos por curso (inicio más temprano, fin más tardío)
+  const rangos = {};
+  eventos.forEach(ev => {
+    if (!rangos[ev.curso]) rangos[ev.curso] = { inicio: null, fin: null };
+    const f = new Date(ev.fecha);
+    if (ev.tipo === 'inicio') {
+      if (!rangos[ev.curso].inicio || f < new Date(rangos[ev.curso].inicio))
+        rangos[ev.curso].inicio = ev.fecha;
+    }
+    if (ev.tipo === 'fin') {
+      if (!rangos[ev.curso].fin || f > new Date(rangos[ev.curso].fin))
+        rangos[ev.curso].fin = ev.fecha;
+    }
+  });
+
+  // Notas del calendario como hitos
+  const hitosNotas = notas.map(n => ({
+    fecha: n.fecha, label: n.nota.length > 30 ? n.nota.slice(0,30)+'…' : n.nota,
+    color: { blue:'#58a6ff', green:'#3fb950', red:'#f85149', amber:'#d29922' }[n.color] || '#d29922'
+  }));
+
+  // Añadir tareas manuales como rangos extra
+  tareasManuales.forEach((t, i) => {
+    const key = `📌 ${t.nombre}`;
+    rangos[key] = { inicio: t.inicio, fin: t.fin, manual: true, colorIdx: t.colorIdx, manualIdx: i };
+  });
+
+  // Filtrar por selección
+  const filtro = select ? select.value : '';
+  const cursos = Object.keys(rangos).filter(c => !filtro || c === filtro)
+                       .filter(c => rangos[c].inicio || rangos[c].fin);
+
+  ganttCursosActivos = Object.keys(rangos).filter(k => !rangos[k].manual);
+
+  // Poblar selector (solo cursos reales)
+  if (select) {
+    const prev = select.value;
+    select.innerHTML = '<option value="">Todos los cursos</option>';
+    ganttCursosActivos.forEach(curso => {
+      const opt = document.createElement('option');
+      opt.value = curso; opt.textContent = curso;
+      select.appendChild(opt);
+    });
+    select.value = prev;
+  }
+
+  if (!cursos.length) {
+    wrap.style.display = 'none';
+    empty.style.display = '';
+    return;
+  }
+  wrap.style.display = ''; empty.style.display = 'none';
+
+  // Rango global de fechas para el eje X
+  const todasFechas = eventos.map(e => new Date(e.fecha));
+  if (!todasFechas.length) return;
+  let minDate = new Date(Math.min(...todasFechas));
+  let maxDate = new Date(Math.max(...todasFechas));
+  // Padding de 5 días a cada lado
+  minDate.setDate(minDate.getDate() - 5);
+  maxDate.setDate(maxDate.getDate() + 5);
+
+  const isLight = document.body.classList.contains('light');
+  const gridClr = isLight ? 'rgba(0,0,0,.07)' : 'rgba(255,255,255,.06)';
+  const textClr = isLight ? '#636c76' : '#7d8590';
+  const hoy     = new Date(); hoy.setHours(0,0,0,0);
+
+  // Altura dinámica
+  const rowH  = 36;
+  const chartH = Math.max(180, cursos.length * rowH + 80);
+  wrap.style.height = chartH + 'px';
+
+  // Datasets: una barra flotante por curso (incluye tareas manuales)
+  const datasets = cursos.map((curso, i) => {
+    const info = rangos[curso];
+    let col;
+    if (info.manual) {
+      col = PALETA[info.colorIdx % PALETA.length];
+    } else {
+      col = cursoPaleta[curso] || PALETA[i % PALETA.length];
+    }
+    const ini = info.inicio ? new Date(info.inicio) : new Date(info.fin);
+    const fin = info.fin    ? new Date(info.fin)    : new Date(info.inicio);
+    return {
+      label: curso,
+      data: [{ x: [ini, fin], y: curso, manual: info.manual, manualIdx: info.manualIdx }],
+      backgroundColor: col.bg.replace('.18)', '.55)').replace('.2)', '.55)').replace('.22)', '.55)'),
+      borderColor: info.manual ? col.border : col.border,
+      borderWidth: info.manual ? 2 : 2,
+      borderDash: info.manual ? [5,3] : [],
+      borderSkipped: false,
+      borderRadius: 5,
+    };
+  });
+
+  // Dataset hitos de notas (puntos scatter)
+  const scatterNotas = {
+    type: 'scatter',
+    label: 'Notas',
+    data: hitosNotas
+      .filter(n => { const f = new Date(n.fecha); return f >= minDate && f <= maxDate; })
+      .map(n => ({ x: new Date(n.fecha), y: cursos[0] || '', nota: n.label, color: n.color })),
+    pointStyle: 'triangle',
+    pointRadius: 7,
+    backgroundColor: hitosNotas.map(n => n.color),
+    borderColor: hitosNotas.map(n => n.color),
+    showLine: false,
   };
 
-  addBtn('← Ant', currentPage - 1, currentPage <= 1, false);
+  if (ganttChart) { ganttChart.destroy(); ganttChart = null; }
 
-  pageRange(currentPage, pages).forEach(p => {
-    if (p === '…') {
-      const li = document.createElement('li');
-      li.className = 'disabled';
-      li.innerHTML = '<span class="gpage-link" style="cursor:default">…</span>';
-      ul.appendChild(li);
-    } else {
-      addBtn(p, p, false, p === currentPage);
+  const ctx = document.getElementById('gantt-chart').getContext('2d');
+  ganttChart = new Chart(ctx, {
+    type: 'bar',
+    data: { datasets: [...datasets, scatterNotas] },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      onClick(evt, elements) {
+        if (!elements.length) return;
+        const el  = elements[0];
+        const raw = ganttChart.data.datasets[el.datasetIndex].data[el.index];
+        if (!raw) return;
+        if (raw.manual && raw.manualIdx !== undefined) {
+          abrirModalTarea(raw.manualIdx);
+        } else {
+          // Curso real — abrir popup de detalle
+          const label = ganttChart.data.datasets[el.datasetIndex].label;
+          abrirModalCurso(label);
+        }
+      },
+      onHover(evt, elements) {
+        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => items[0].dataset.label,
+            label: item => {
+              if (item.dataset.type === 'scatter') return `📌 ${item.raw.nota}`;
+              const [ini, fin] = item.raw.x;
+              const fmt = d => d.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
+              const extra = item.raw.manual ? '  ✏ Clic para editar' : '  🔍 Clic para ver detalle';
+              return `${fmt(new Date(ini))} → ${fmt(new Date(fin))}${extra}`;
+            }
+          },
+          backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+          titleColor: '#e6edf3', bodyColor: '#7d8590',
+        },
+        annotation: {
+          annotations: {
+            hoyLine: {
+              type: 'line', scaleID: 'x', value: hoy,
+              borderColor: '#f85149', borderWidth: 1.5, borderDash: [4,3],
+              label: { content: 'Hoy', enabled: true, position: 'start',
+                       backgroundColor: 'rgba(248,81,73,.15)', color: '#f85149',
+                       font: { size: 10 }, padding: { x:4, y:2 } }
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'month', tooltipFormat: 'dd/MM/yyyy',
+                  displayFormats: { month: 'MMM yy', week: 'dd MMM' } },
+          min: minDate, max: maxDate,
+          grid: { color: gridClr },
+          ticks: { color: textClr, font: { size: 11 } },
+        },
+        y: {
+          grid: { color: gridClr },
+          ticks: { color: textClr, font: { size: 11 },
+                   callback: v => v.length > 22 ? v.slice(0,22)+'…' : v },
+        }
+      }
     }
   });
-
-  addBtn('Sig →', currentPage + 1, currentPage >= pages, false);
 }
 
-function pageRange(cur, total) {
-  if (total <= 7) return Array.from({length: total}, (_, i) => i + 1);
-  const s = new Set([1, total, cur]);
-  if (cur > 1) s.add(cur - 1);
-  if (cur < total) s.add(cur + 1);
-  const arr = Array.from(s).sort((a,b) => a - b);
-  const res = [];
-  for (let i = 0; i < arr.length; i++) {
-    if (i > 0 && arr[i] - arr[i-1] > 1) res.push('…');
-    res.push(arr[i]);
-  }
-  return res;
+function resetGanttFiltro() {
+  const sel = document.getElementById('gantt-filtro-curso');
+  if (sel) sel.value = '';
+  buildGantt(calEventos, calNotas);
 }
 
-// ── Reset página al cambiar filtros ──────────────────────────────
-function onFilter() { currentPage = 1; render(); }
+document.getElementById('gantt-filtro-curso')?.addEventListener('change', () => {
+  buildGantt(calEventos, calNotas);
+});
 
-function limpiarFiltros() {
-  inputBuscar.value  = '';
-  selFiltro.value    = 'todas';
-  selOrden.value     = 'prioridad_asc';
-  selPerPage.value   = '20';
-  currentPage        = 1;
-  render();
-}
+// Cargar automáticamente al cargar la página
+document.addEventListener('DOMContentLoaded', () => {
+  calAno = new Date().getFullYear();
+  calMes = new Date().getMonth();
+  cargarCalendarData();
+});
 
-// ── Eventos ──────────────────────────────────────────────────────
-inputBuscar.addEventListener('input',  onFilter);
-selFiltro.addEventListener('change',   onFilter);
-selOrden.addEventListener('change',    onFilter);
-selPerPage.addEventListener('change',  onFilter);
-
-// Arranque
-render();
-
-} // end if container
 </script>
 {% endblock %}

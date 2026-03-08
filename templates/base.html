@@ -550,16 +550,14 @@
             ◈ Dashboard Tareas
           </a>
         </li>
-
-        {% if session.get('es_admin') == 1 %}
+        {% if session.get('es_admin', 0) == 2 %}
         <li class="nav-item">
           <a class="nav-link{{ ' active' if path == '/admin' else '' }}" href="/admin">
             ⚙ Admin Tareas
           </a>
         </li>
         {% endif %}
-
-        {% if session.get('es_admin') == 1 %}
+        {% if session.get('es_admin', 0) >= 1 %}
         <li class="nav-item">
           <a class="nav-link{{ ' active' if path == '/usuarios' else '' }}" href="/usuarios">
             👥 Usuarios
@@ -567,18 +565,23 @@
         </li>
         {% endif %}
 
-        {% if session.get('es_admin') == 1 %}
+        <li class="nav-item">
+          <a class="nav-link{{ ' active' if path.startswith('/formacion') else '' }}" href="/formacion">
+            🎓 Formación
+          </a>
+        </li>
+        
+        {% if session.get('es_admin', 0) >= 1 %}
         <li class="nav-item">
           <a class="nav-link{{ ' active' if path == '/accesos_rapidos' else '' }}" href="/accesos_rapidos">
             ⚙ Accesos Rápidos
           </a>
         </li>
         {% endif %}
-
-        {% if session.get('es_admin') == 1 %}
+        {% if session.get('es_admin', 0) == 2 %}
         <li class="nav-item">
-          <a class="nav-link{{ ' active' if path.startswith('/formacion') else '' }}" href="/formacion">
-            🎓 Formación
+          <a class="nav-link{{ ' active' if path == '/superadmin' else '' }}" href="/superadmin">
+            📊 Gráficos Globales
           </a>
         </li>
         {% endif %}
@@ -610,10 +613,6 @@
 <div class="page-wrapper">
   {% block content %}{% endblock %}
 
-  <!-- Export button (footer) -->
-  <div class="text-end mt-4">
-    <a href="/exportar" class="btn btn-g-export">⬇ Exportar Excel</a>
-  </div>
 </div>
 
 <!-- Bootstrap JS -->

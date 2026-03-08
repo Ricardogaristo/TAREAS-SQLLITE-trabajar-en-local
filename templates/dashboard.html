@@ -102,7 +102,11 @@
             <span style="font-family:var(--mono); font-size:.72rem; color:var(--text-muted); flex-shrink:0;">
               {{ t[5] if t[5] else '—' }}
             </span>
-            <span style="font-size:.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            <span class="priv-field"
+                  data-real="{{ t[1] | e }}"
+                  onclick="revealPriv(event, this)"
+                  title="Clic para revelar"
+                  style="font-size:.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;">
               {{ t[1] }}
             </span>
           </li>
@@ -134,31 +138,138 @@
   </div>
 </div>
 
+<!-- ── Modal categoría ───────────────────── -->
+<div id="modal-cat" style="
+  display:none; position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.65); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center; padding:1rem;
+" onclick="if(event.target===this) cerrarModalCat()">
+  <div style="
+    background:var(--bg2); border:1px solid var(--border-soft);
+    border-radius:14px; width:100%; max-width:560px;
+    max-height:82vh; display:flex; flex-direction:column;
+    box-shadow:0 24px 60px rgba(0,0,0,.5);
+    animation: slideUp .22s cubic-bezier(.22,1,.36,1) both;
+  ">
+    <!-- Header -->
+    <div style="display:flex; align-items:center; gap:.7rem;
+                padding:1.1rem 1.4rem; border-bottom:1px solid var(--border-soft); flex-shrink:0;">
+      <span id="mcat-emoji" style="font-size:1.3rem;"></span>
+      <div>
+        <div id="mcat-titulo" style="font-weight:700; font-size:1rem;"></div>
+        <div id="mcat-sub" style="font-size:.72rem; color:var(--text-muted); font-family:var(--mono);"></div>
+      </div>
+      <button onclick="cerrarModalCat()" style="
+        margin-left:auto; background:none; border:none; cursor:pointer;
+        color:var(--text-muted); font-size:1.2rem; line-height:1; padding:.2rem .4rem;
+        border-radius:6px; transition:background .15s;
+      " onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='none'">✕</button>
+    </div>
+    <!-- Progress bar -->
+    <div style="padding:.85rem 1.4rem .6rem; flex-shrink:0; border-bottom:1px solid var(--border-soft);">
+      <div style="display:flex; align-items:center; gap:.75rem;">
+        <div style="flex:1; height:6px; background:var(--bg3); border-radius:99px; overflow:hidden;">
+          <div id="mcat-bar" style="height:100%; border-radius:99px; transition:width .6s ease;"></div>
+        </div>
+        <span id="mcat-pct" style="font-family:var(--mono); font-size:.75rem; color:var(--accent); min-width:36px;"></span>
+      </div>
+      <div id="mcat-stats" style="display:flex; gap:1.2rem; margin-top:.5rem; font-size:.72rem; color:var(--text-muted); font-family:var(--mono);"></div>
+    </div>
+    <!-- Lista de tareas -->
+    <div id="mcat-lista" style="overflow-y:auto; flex:1; padding:.5rem 0;"></div>
+  </div>
+</div>
+
+<style>
+@keyframes slideUp {
+  from { opacity:0; transform:translateY(20px) scale(.97); }
+  to   { opacity:1; transform:translateY(0)    scale(1); }
+}
+</style>
+
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+.priv-field {
+  filter: blur(4px);
+  transition: filter .2s ease;
+  cursor: pointer;
+  user-select: none;
+}
+.priv-field.revealed {
+  filter: none;
+  cursor: default;
+}
+</style>
 <script>
+  window.revealPriv = function (e, el) {
+    e.stopPropagation();
+    if (el.classList.contains('revealed')) return;
+    const real = el.dataset.real || '';
+    if (real) el.textContent = real;
+    el.classList.add('revealed');
+    el.title = '';
+    setTimeout(() => {
+      el.classList.remove('revealed');
+      if (real) el.textContent = real;
+      el.title = 'Clic para revelar';
+    }, 10000);
+  };
+
   const cats  = {{ categorias | tojson }};
   const cnts  = {{ cantidades | tojson }};
-  const isLight = document.body.classList.contains('light');
+  // tareas_por_categoria: dict {cat: [{id,descripcion,completada,codigo,prioridad,fecha_vencimiento},...]}
+  // Requires Flask route to pass this variable. Falls back to empty if not provided.
+  // Construir tareasPorCat desde todas_tareas (pasada desde Flask)
+  // Formato esperado del tuple: [id, descripcion, categoria, prioridad, completada, codigo, fecha_vencimiento]
+  // Si no se pasa, el modal mostrará solo el resumen de conteos del gráfico.
+  const todasTareas = {{ todas_tareas | tojson if todas_tareas is defined else '[]' }};
+  const tareasPorCat = {};
+  todasTareas.forEach(t => {
+    const cat = t.categoria || t[2] || 'Sin categoría';
+    if (!tareasPorCat[cat]) tareasPorCat[cat] = [];
+    tareasPorCat[cat].push({
+      id:          t.id          ?? t[0],
+      descripcion: t.descripcion ?? t[1],
+      prioridad:   t.prioridad   ?? t[3],
+      completada:  t.completada  ?? t[4],
+      codigo:      t.codigo      ?? t[5],
+      fecha:       t.fecha       ?? t[6] ?? t.fecha_vencimiento ?? '',
+      notas:       t.notas       ?? t[7] ?? ''
+    });
+  });
+
+  const isLight   = document.body.classList.contains('light');
   const gridColor = isLight ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.06)';
   const textColor = isLight ? '#636c76' : '#7d8590';
+  const barColors = cats.map((_,i) => `hsl(${140 + i*28},55%,${isLight?38:48}%)`);
 
-  new Chart(document.getElementById('chartCat'), {
+  const chart = new Chart(document.getElementById('chartCat'), {
     type: 'bar',
     data: {
       labels: cats,
       datasets: [{
         label: 'Tareas',
         data: cnts,
-        backgroundColor: cats.map((_,i)=>`hsl(${140 + i*28},55%,${isLight?38:48}%)`),
+        backgroundColor: barColors.map(c => c),
+        hoverBackgroundColor: barColors.map(c => c.replace('55%', '70%')),
         borderRadius: 6,
         borderSkipped: false,
+        cursor: 'pointer',
       }]
     },
     options: {
       responsive: true,
+      onClick(e, elements) {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        abrirModalCat(cats[idx], idx);
+      },
+      onHover(e, elements) {
+        e.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -167,6 +278,14 @@
           borderWidth: 1,
           titleColor: '#e6edf3',
           bodyColor: '#7d8590',
+          callbacks: {
+            footer: (items) => {
+              const i = items[0].dataIndex;
+              const ts = tareasPorCat[cats[i]] || [];
+              const ok = ts.filter(t => t.completada == 1).length;
+              return `✔ ${ok} completadas · ● ${ts.length - ok} pendientes`;
+            }
+          }
         }
       },
       scales: {
@@ -181,6 +300,103 @@
         }
       }
     }
+  });
+
+  // ── Modal ──────────────────────────────────────────────────────────
+  const PRIORIDAD_LABEL = { 1:'🔴 Alta', 2:'🟡 Media', 3:'🟢 Baja', '1':'🔴 Alta', '2':'🟡 Media', '3':'🟢 Baja' };
+
+  function abrirModalCat(categoria, idx) {
+    const tareas    = tareasPorCat[categoria] || [];
+    const totalGraf = cnts[idx] || 0;  // siempre disponible desde el gráfico
+    const total     = tareas.length || totalGraf;
+    const hechas    = tareas.length ? tareas.filter(t => t.completada == 1).length : 0;
+    const pct       = tareas.length ? Math.round(hechas / total * 100) : 0;
+    const color     = barColors[idx] || 'var(--accent)';
+
+    // Reset barra antes de animar
+    const bar = document.getElementById('mcat-bar');
+    bar.style.cssText = 'height:100%; border-radius:99px; transition:width .6s ease; width:0%;';
+
+    document.getElementById('mcat-emoji').textContent  = '📂';
+    document.getElementById('mcat-titulo').textContent = categoria;
+    document.getElementById('mcat-sub').textContent    = `${total} tarea${total!==1?'s':''} en esta categoría`;
+    document.getElementById('mcat-pct').textContent    = tareas.length ? `${pct}%` : `${total} tareas`;
+
+    // Animar barra después de un frame
+    requestAnimationFrame(() => {
+      bar.style.width     = tareas.length ? `${pct}%` : '100%';
+      bar.style.background = color;
+    });
+
+    document.getElementById('mcat-stats').innerHTML = tareas.length ? `
+      <span>✔ ${hechas} completadas</span>
+      <span>● ${total - hechas} pendientes</span>
+    ` : `<span>📊 ${total} tareas en total</span>`;
+
+    const lista = document.getElementById('mcat-lista');
+    if (!tareas.length) {
+      // Sin detalle individual: mostrar resumen de conteos del gráfico
+      const totalCat = cnts[idx] || 0;
+      lista.innerHTML = `
+        <div style="padding:1.5rem 1.4rem;">
+          <div style="
+            background:var(--bg3); border-radius:10px; padding:1rem 1.2rem;
+            display:flex; align-items:center; gap:1rem; margin-bottom:1rem;
+          ">
+            <span style="font-size:2rem;">📊</span>
+            <div>
+              <div style="font-weight:700; font-size:1.1rem; font-family:var(--mono);">${totalCat}</div>
+              <div style="font-size:.78rem; color:var(--text-muted);">tarea${totalCat!==1?'s':''} en esta categoría</div>
+            </div>
+          </div>
+          <div style="font-size:.75rem; color:var(--text-muted); line-height:1.6; background:var(--bg3);
+                      border-radius:8px; padding:.7rem .9rem; border-left:3px solid var(--accent);">
+            Para ver el detalle de cada tarea, añade <code style="color:var(--accent)">todas_tareas</code>
+            al <code>render_template</code> de Flask:<br><br>
+            <code style="font-size:.7rem; display:block; margin-top:.3rem; color:var(--blue);">
+              todas_tareas = db.execute("SELECT id, descripcion, categoria, prioridad,<br>
+              &nbsp;&nbsp;completada, codigo, fecha_vencimiento FROM tareas<br>
+              &nbsp;&nbsp;WHERE user_id=?", (user_id,)).fetchall()
+            </code>
+          </div>
+        </div>`;
+    } else {
+      lista.innerHTML = tareas.map(t => {
+        const resumen = t.notas
+          ? t.notas.length > 80 ? t.notas.slice(0, 80) + '…' : t.notas
+          : t.descripcion.length > 80 ? t.descripcion.slice(0, 80) + '…' : t.descripcion;
+        return `
+          <div style="
+            padding:.75rem 1.4rem;
+            border-bottom:1px solid var(--border-soft);
+            transition:background .15s;
+          " onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='none'">
+            <div style="display:flex; align-items:center; gap:.6rem; margin-bottom:.2rem;">
+              ${t.codigo ? `<span style="font-family:var(--mono); font-size:.72rem; font-weight:700; color:var(--accent); background:var(--bg3); padding:.1rem .45rem; border-radius:5px;">${t.codigo}</span>` : ''}
+              <span style="font-size:.85rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${t.descripcion}">
+                ${t.descripcion}
+              </span>
+            </div>
+            <div style="font-size:.75rem; color:var(--text-muted); line-height:1.4; padding-left:${t.codigo ? '0' : '0'};">
+              ${resumen}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    const modal = document.getElementById('modal-cat');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function cerrarModalCat() {
+    document.getElementById('modal-cat').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') cerrarModalCat();
   });
 </script>
 {% endblock %}

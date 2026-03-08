@@ -127,7 +127,12 @@
             <td data-label="Código" style="font-family:var(--mono); font-size:.78rem; color:var(--text-muted);">
               {{ t[5] if t[5] else '—' }}
             </td>
-            <td data-label="Descripción">{{ t[1] }}</td>
+            <td data-label="Descripción">
+              <span class="priv-field"
+                    data-real="{{ t[1] | e }}"
+                    onclick="revealPriv(event, this)"
+                    title="Clic para revelar">{{ t[1] }}</span>
+            </td>
             <td data-label="Categoría">
               <span class="badge-g badge-cat">{{ t[2] if t[2] else 'General' }}</span>
             </td>
@@ -193,7 +198,33 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+.priv-field {
+  filter: blur(4px);
+  transition: filter .2s ease;
+  cursor: pointer;
+  user-select: none;
+}
+.priv-field.revealed {
+  filter: none;
+  cursor: default;
+}
+</style>
 <script>
+  window.revealPriv = function (e, el) {
+    e.stopPropagation();
+    if (el.classList.contains('revealed')) return;
+    const real = el.dataset.real || '';
+    if (real) el.textContent = real;
+    el.classList.add('revealed');
+    el.title = '';
+    setTimeout(() => {
+      el.classList.remove('revealed');
+      if (real) el.textContent = real;
+      el.title = 'Clic para revelar';
+    }, 10000);
+  };
+
   // ── Server-side filter (category + state) ──
   function applyServerFilters(){
     const estado = document.getElementById('sel-estado').value;

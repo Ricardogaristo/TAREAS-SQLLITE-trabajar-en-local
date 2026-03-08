@@ -161,8 +161,10 @@
 
             <td data-label="Descripción">
               <div style="display:flex; align-items:center; gap:.45rem; flex-wrap:wrap;">
-                <span class="task-toggle" onclick="toggleDetail({{ tid }})"
-                      style="cursor:pointer;" title="Ver detalle">{{ tdesc }}</span>
+                <span class="task-toggle priv-field"
+                      data-real="{{ tdesc | e }}"
+                      onclick="revealPriv(event, this); toggleDetail({{ tid }})"
+                      style="cursor:pointer;" title="Clic para revelar">{{ tdesc }}</span>
                 {% if tsubs %}
                 <span class="badge-g" style="font-size:.62rem; background:var(--bg3);
                       border-color:var(--border);
@@ -170,7 +172,13 @@
                   ✓ {{ n_hechas }}/{{ tsubs|length }}
                 </span>
                 {% endif %}
-                {% if tnotas %}<span title="{{ tnotas }}" style="font-size:.78rem; cursor:help; color:var(--text-muted);">📝</span>{% endif %}
+                {% if tnotas %}
+                <span class="priv-field"
+                      data-real="{{ tnotas | e }}"
+                      onclick="revealPriv(event, this)"
+                      title="Clic para ver notas"
+                      style="font-size:.78rem; cursor:pointer; color:var(--text-muted);">📝</span>
+                {% endif %}
               </div>
             </td>
 
@@ -295,10 +303,25 @@
 
   </div>
 </div>
-
+  <!-- Export button (footer) -->
+  <div class="text-end mt-4">
+    <a href="/exportar" class="btn btn-g-export">⬇ Exportar Excel</a>
+  </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+.priv-field {
+  filter: blur(4px);
+  transition: filter .2s ease;
+  cursor: pointer;
+  user-select: none;
+}
+.priv-field.revealed {
+  filter: none;
+  cursor: default;
+}
+</style>
 <script>
 (function () {
   const form      = document.getElementById('filter-form');
@@ -377,6 +400,35 @@
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); form.submit(); } });
   }
 
+  // ── Privacidad: revelar campo enmascarado ────────────────────────────
+  window.revealPriv = function (e, el) {
+    e.stopPropagation();
+    if (el.classList.contains('revealed')) return;
+
+    // Mostrar contenido real
+    const real = el.dataset.real || '';
+    if (real && real !== '📝') el.textContent = real;
+    el.classList.add('revealed');
+    el.title = '';
+
+    // Auto-ocultar tras 10 segundos
+    setTimeout(() => {
+      el.classList.remove('revealed');
+      if (real && real !== '📝') el.textContent = el.dataset.real;
+      if (el.textContent === el.dataset.real && el.dataset.real !== '📝') {
+        // volver al estado inicial — el blur volverá por CSS
+      } else {
+        el.textContent = '📝';
+      }
+      el.title = 'Clic para revelar';
+    }, 10000);
+  };
+
+  // Aplicar blur inicial a todos los campos privados
+  document.querySelectorAll('.priv-field').forEach(el => {
+    el.title = 'Clic para revelar';
+  });
+
   // ── Toggle panel detalle ──────────────────────────────────────────────
   window.toggleDetail = function (id) {
     const row = document.getElementById('detail-' + id);
@@ -385,4 +437,5 @@
   };
 })();
 </script>
+
 {% endblock %}

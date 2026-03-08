@@ -6,11 +6,11 @@ Base de datos independiente: formacion.db
 from flask import Blueprint, render_template, request, redirect, session, url_for, jsonify
 from functools import wraps
 from datetime import datetime
-import sqlite3
 import openpyxl
 import io
 import os
 import unicodedata
+from db_mysql import get_form_conn, column_exists, get_db_name
 from consolidar_alumnos import consolidar_desde_db, consolidar_desde_excel
 from ia_formacion import (analizar_alumno, generar_mensaje_wa,
                            chatbot_tutor, limpiar_chat, predecir_riesgo_curso,
@@ -34,100 +34,96 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# ── Conexión ───────────────────────────────────────────────────────────────────
-def get_form_conn():
-    conn = sqlite3.connect(FORM_DB)
-    conn.row_factory = sqlite3.Row
-    return conn
-
 # ── Inicialización de tablas ───────────────────────────────────────────────────
 def inicializar_formacion():
     conn = get_form_conn()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS alumnos (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            id              INT AUTO_INCREMENT PRIMARY KEY,
             curso           TEXT,
             nombre          TEXT NOT NULL,
-            progreso        REAL DEFAULT 0,
-            examenes        INTEGER DEFAULT 0,
-            fecha_inicio    TEXT,
-            fecha_fin       TEXT,
-            supera_75       INTEGER DEFAULT 0,
-            telefono        TEXT,
-            tutor_id        INTEGER,
-            created_at      TEXT DEFAULT (datetime('now'))
+            progreso        DOUBLE DEFAULT 0,
+            examenes        INT DEFAULT 0,
+            fecha_inicio    VARCHAR(30),
+            fecha_fin       VARCHAR(30),
+            supera_75       INT DEFAULT 0,
+            telefono        VARCHAR(50),
+            tutor_id        INT,
+            created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS historial_snapshots (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            tutor_id    INTEGER,
-            fecha       TEXT,
-            label       TEXT,
-            total       INTEGER,
-            superan_75  INTEGER,
-            pct_exito   REAL,
-            avg_progreso REAL,
-            created_at  TEXT DEFAULT (datetime('now'))
+            id           INT AUTO_INCREMENT PRIMARY KEY,
+            tutor_id     INT,
+            fecha        VARCHAR(20),
+            label        TEXT,
+            total        INT,
+            superan_75   INT,
+            pct_exito    DOUBLE,
+            avg_progreso DOUBLE,
+            created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS historial_automatico (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            tutor_id       INTEGER,
-            fecha          TEXT,
+            id             INT AUTO_INCREMENT PRIMARY KEY,
+            tutor_id       INT,
+            fecha          VARCHAR(20),
             evento         TEXT,
-            total_alumnos  INTEGER,
-            total_cursos   INTEGER,
-            created_at     TEXT DEFAULT (datetime('now'))
+            total_alumnos  INT,
+            total_cursos   INT,
+            created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS alarmas_completadas (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            tutor_id    INTEGER NOT NULL,
-            clave       TEXT    NOT NULL,
-            fecha_dia   TEXT    NOT NULL,
-            created_at  TEXT    DEFAULT (datetime('now')),
-            UNIQUE(tutor_id, clave, fecha_dia)
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            tutor_id    INT NOT NULL,
+            clave       VARCHAR(150) NOT NULL,
+            fecha_dia   VARCHAR(20) NOT NULL,
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_alarma (tutor_id, clave, fecha_dia)
         )
     """)
-    # Historial de progreso por alumno (una fila por importación)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS progreso_historial (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            alumno_id      INTEGER NOT NULL,
-            tutor_id       INTEGER NOT NULL,
-            fecha_import   TEXT NOT NULL,
-            progreso       REAL    DEFAULT 0,
-            examenes       INTEGER DEFAULT 0,
-            delta_progreso REAL    DEFAULT 0,
-            avanzo         INTEGER DEFAULT 0,
+            id             INT AUTO_INCREMENT PRIMARY KEY,
+            alumno_id      INT NOT NULL,
+            tutor_id       INT NOT NULL,
+            fecha_import   VARCHAR(20) NOT NULL,
+            progreso       DOUBLE DEFAULT 0,
+            examenes       INT DEFAULT 0,
+            delta_progreso DOUBLE DEFAULT 0,
+            avanzo         INT DEFAULT 0,
             FOREIGN KEY (alumno_id) REFERENCES alumnos(id) ON DELETE CASCADE
         )
     """)
 
-    # Migraciones seguras
+    # Migraciones seguras — añade columnas si no existen
     for col, ddl in [
-        ("curso",              "ALTER TABLE alumnos ADD COLUMN curso TEXT"),
-        ("telefono",           "ALTER TABLE alumnos ADD COLUMN telefono TEXT"),
-        ("supera_75",          "ALTER TABLE alumnos ADD COLUMN supera_75 INTEGER DEFAULT 0"),
-        ("tutor_id",           "ALTER TABLE alumnos ADD COLUMN tutor_id INTEGER"),
-        ("created_at",         "ALTER TABLE alumnos ADD COLUMN created_at TEXT DEFAULT (datetime('now'))"),
-        ("archivado",          "ALTER TABLE alumnos ADD COLUMN archivado INTEGER DEFAULT 0"),
-        ("archivado_at",       "ALTER TABLE alumnos ADD COLUMN archivado_at TEXT"),
-        ("ultima_importacion", "ALTER TABLE alumnos ADD COLUMN ultima_importacion TEXT"),
-        ("delta_progreso",     "ALTER TABLE alumnos ADD COLUMN delta_progreso REAL DEFAULT 0"),
-        ("avanzo",             "ALTER TABLE alumnos ADD COLUMN avanzo INTEGER DEFAULT 0"),
+        ("curso",              "TEXT"),
+        ("telefono",           "VARCHAR(50)"),
+        ("supera_75",          "INT DEFAULT 0"),
+        ("tutor_id",           "INT"),
+        ("created_at",         "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+        ("archivado",          "INT DEFAULT 0"),
+        ("archivado_at",       "VARCHAR(30)"),
+        ("ultima_importacion", "VARCHAR(20)"),
+        ("delta_progreso",     "DOUBLE DEFAULT 0"),
+        ("avanzo",             "INT DEFAULT 0"),
+        ("gestionado",         "INT DEFAULT 0"),
+        ("tipo_gestion",       "VARCHAR(50)"),
+        ("comentario",         "TEXT"),
+        ("fecha_gestion",      "VARCHAR(30)"),
     ]:
-        try:
-            cursor.execute(ddl)
-        except sqlite3.OperationalError:
-            pass
+        if not column_exists(cursor, 'alumnos', col):
+            cursor.execute(f"ALTER TABLE alumnos ADD COLUMN {col} {ddl}")
+
     conn.commit()
     conn.close()
-    print("✅ formacion.db inicializada correctamente.")
+    print("✅ MySQL formacion inicializada correctamente.")
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _registrar_evento_historico(tutor_id, evento, conn):
@@ -1050,7 +1046,7 @@ def alarma_completar():
         )
     else:
         conn.execute(
-            "INSERT OR IGNORE INTO alarmas_completadas (tutor_id, clave, fecha_dia) VALUES (?,?,?)",
+            "INSERT IGNORE INTO alarmas_completadas (tutor_id, clave, fecha_dia) VALUES (?,?,?)",
             (tutor_id, clave, hoy)
         )
     conn.commit()
@@ -1067,6 +1063,119 @@ def alarmas_badge():
     completadas = _get_completadas_hoy(tutor_id)
     pendientes = sum(1 for a in alarmas if a["clave"] not in completadas)
     return jsonify({"pendientes": pendientes})
+
+
+# ── Ruta: datos de calendario (FullCalendar) ───────────────────────────────────
+@formacion_bp.route("/formacion/calendar-data")
+@login_required
+def formacion_calendar_data():
+    """Devuelve eventos {tipo,fecha,curso,alumno} y notas para el calendario custom."""
+    tutor_id = session["user_id"]
+    conn = get_form_conn()
+    alumnos = [dict(a) for a in conn.execute(
+        "SELECT id, nombre, curso, fecha_inicio, fecha_fin "
+        "FROM alumnos WHERE tutor_id=? AND (archivado IS NULL OR archivado=0)",
+        (tutor_id,)
+    ).fetchall()]
+    conn.close()
+
+    # Deduplicar: una entrada por (tipo, fecha, curso) — no una por alumno
+    vistos  = set()
+    eventos = []
+    for a in alumnos:
+        curso = a.get("curso") or "Sin curso"
+        if a.get("fecha_inicio"):
+            key = ("inicio", str(a["fecha_inicio"])[:10], curso)
+            if key not in vistos:
+                vistos.add(key)
+                eventos.append({"tipo": "inicio", "fecha": key[1], "curso": curso})
+        if a.get("fecha_fin"):
+            key = ("fin", str(a["fecha_fin"])[:10], curso)
+            if key not in vistos:
+                vistos.add(key)
+                eventos.append({"tipo": "fin", "fecha": key[1], "curso": curso})
+
+    # Notas del calendario
+    conn2 = get_form_conn()
+    conn2.execute("""
+        CREATE TABLE IF NOT EXISTS notas_calendario (
+            id         INT PRIMARY KEY AUTO_INCREMENT,
+            tutor_id   INT         NOT NULL,
+            fecha      DATE        NOT NULL,
+            nota       TEXT,
+            color      VARCHAR(20) DEFAULT 'amber',
+            created_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_tutor_fecha_nota (tutor_id, fecha, nota(100))
+        )
+    """)
+    rows = conn2.execute(
+        "SELECT id, fecha, nota, color FROM notas_calendario WHERE tutor_id=? ORDER BY id ASC",
+        (tutor_id,)
+    ).fetchall()
+    conn2.commit()
+    conn2.close()
+    notas = [{"id": r["id"], "fecha": str(r["fecha"]), "nota": r["nota"], "color": r["color"]} for r in rows]
+
+    return jsonify({"eventos": eventos, "notas": notas})
+
+
+# ── Rutas: notas de calendario ─────────────────────────────────────────────────
+@formacion_bp.route("/formacion/calendar/nota/guardar", methods=["POST"])
+@login_required
+def guardar_nota_calendario():
+    """Guarda o actualiza una nota. El template envía: {fecha, nota, color, nota_id?}."""
+    tutor_id = session["user_id"]
+    data     = request.get_json(silent=True) or {}
+    fecha    = data.get("fecha", "").strip()
+    nota     = data.get("nota", "").strip()
+    color    = data.get("color", "amber").strip()
+    nota_id  = data.get("nota_id")  # None si es nueva
+
+    if not fecha or not nota:
+        return jsonify({"ok": False, "error": "Fecha y nota requeridas"}), 400
+
+    conn = get_form_conn()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS notas_calendario (
+            id         INT PRIMARY KEY AUTO_INCREMENT,
+            tutor_id   INT         NOT NULL,
+            fecha      DATE        NOT NULL,
+            nota       TEXT,
+            color      VARCHAR(20) DEFAULT 'amber',
+            created_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_tutor_fecha_nota (tutor_id, fecha, nota(100))
+        )
+    """)
+    if nota_id:
+        conn.execute(
+            "UPDATE notas_calendario SET nota=?, color=? WHERE id=? AND tutor_id=?",
+            (nota, color, nota_id, tutor_id)
+        )
+        new_id = nota_id
+    else:
+        cur = conn.execute(
+            "INSERT INTO notas_calendario (tutor_id, fecha, nota, color) VALUES (?,?,?,?)",
+            (tutor_id, fecha, nota, color)
+        )
+        new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "id": new_id})
+
+
+@formacion_bp.route("/formacion/calendario/nota/borrar/<int:nota_id>", methods=["POST"])
+@login_required
+def borrar_nota_calendario(nota_id):
+    """Elimina una nota por su id."""
+    tutor_id = session["user_id"]
+    conn = get_form_conn()
+    conn.execute(
+        "DELETE FROM notas_calendario WHERE id=? AND tutor_id=?",
+        (nota_id, tutor_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 # ── Ruta: dashboard de formación ───────────────────────────────────────────────
@@ -1615,3 +1724,27 @@ def exportar_excel():
         as_attachment=True,
         download_name=filename,
     )
+
+# ── Ruta: guardar gestión de alumno ──────────────────────────────────────────
+@formacion_bp.route("/formacion/alumno_gestion/<int:alumno_id>", methods=["POST"])
+@login_required
+def alumno_gestion(alumno_id):
+    tutor_id = session["user_id"]
+    data     = request.get_json(force=True) or {}
+
+    gestionado   = int(data.get("gestionado", 0))
+    tipo_gestion = str(data.get("tipo_gestion", "") or "").strip()[:50]
+    comentario   = str(data.get("comentario",  "") or "").strip()
+    fecha_gestion = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    conn = get_form_conn()
+    conn.execute(
+        """UPDATE alumnos
+           SET gestionado=?, tipo_gestion=?, comentario=?, fecha_gestion=?
+           WHERE id=? AND tutor_id=?""",
+        (gestionado, tipo_gestion, comentario, fecha_gestion, alumno_id, tutor_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True})
