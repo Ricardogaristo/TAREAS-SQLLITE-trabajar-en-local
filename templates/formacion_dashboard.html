@@ -76,7 +76,7 @@
     </div>
     <div class="mt-3 d-flex gap-3 flex-wrap" style="font-size:.85rem; color:var(--text-muted);">
       <span>📊 Progreso promedio: <strong style="color:var(--text);" id="bar-avg">{{ avg_progreso }}%</strong></span>
-      <span>📝 Exámenes realizados: <strong style="color:var(--text);" id="bar-examenes">{{ total_examenes }}</strong></span>
+      <span>📝 Exámenes (R/S/T): <strong style="color:var(--text);" id="bar-examenes">{{ total_examenes }}</strong></span>
     </div>
   </div>
 </div>
@@ -378,7 +378,7 @@
               data-estado="{{ 'supera' if a['supera_75'] == 1 else 'bajo' }}"
               data-prog="{{ p }}"
               data-nombre="{{ a['nombre']|lower }}"
-              data-exam="{{ a['examenes'] if a['examenes'] is not none else 0 }}"
+              data-exam="{{ a['examenes'] if a['examenes'] is not none else '0/0/0' }}" data-nollamar="{{ 1 if a.get('no_llamar') else 0 }}"
               data-fecha="{{ a['created_at'][:10] if a['created_at'] else '' }}">
             <td data-label="Curso"><span class="badge-g badge-cat">{{ a['curso'] if a['curso'] else '—' }}</span></td>
             <td data-label="Nombre" style="font-weight:600;">{{ a['nombre'] }}</td>
@@ -392,7 +392,14 @@
                 <span style="font-family:var(--mono); font-size:.78rem; min-width:38px;">{{ p }}%</span>
               </div>
             </td>
-            <td style="font-family:var(--mono); font-size:.83rem; text-align:center;">{{ a['examenes'] if a['examenes'] is not none else 0 }}</td>
+            <td style="font-family:var(--mono); font-size:.83rem; text-align:center;">
+              {% set ex_v = a['examenes'] if a['examenes'] is not none else '0/0/0' %}
+              {% if a.get('ex_pending') %}
+              <span style="color:#7C3AED; font-weight:700;">{{ ex_v }}</span>
+              {% else %}
+              {{ ex_v }}
+              {% endif %}
+            </td>
             <td style="font-family:var(--mono); font-size:.78rem; white-space:nowrap;">{{ a['fecha_inicio'] if a['fecha_inicio'] else '—' }}</td>
             <td style="font-family:var(--mono); font-size:.78rem; white-space:nowrap;">{{ a['fecha_fin'] if a['fecha_fin'] else '—' }}</td>
             <td>
@@ -432,7 +439,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 /* ─── DATOS ──────────────────────────────────────────────────────── */
-const ALL_ALUMNOS = {{ alumnos | tojson }};
+const ALL_ALUMNOS = ({{ alumnos | tojson }}).map(a=>({...a, no_llamar:!!(a.no_llamar), examenes:(a.examenes||'0/0/0').toString()}));
 const isLight   = document.body.classList.contains('light');
 const gridColor = isLight ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.06)';
 const textColor = isLight ? '#636c76' : '#7d8590';
@@ -480,21 +487,25 @@ document.querySelectorAll('.course-tab').forEach(btn=>{
 });
 
 /* ─── KPIs ───────────────────────────────────────────────────────── */
+function parseEx(val){const p=(val||'0/0/0').toString().split('/');return{r:parseInt(p[0])||0,s:parseInt(p[1])||0,t:parseInt(p[2])||0};}
 function updateKPIs(pool){
-  const total=pool.length,sup=pool.filter(a=>a.supera_75===1).length;
+  const contables=pool.filter(a=>!a.no_llamar);
+  const total=contables.length,sup=contables.filter(a=>a.supera_75===1).length;
   const pct=total?Math.round(sup/total*1000)/10:0;
-  const avg=total?Math.round(pool.reduce((s,a)=>s+a.progreso,0)/total*10)/10:0;
-  const ex=pool.reduce((s,a)=>s+(a.examenes||0),0);
-  document.getElementById('kpi-total').textContent=total;
+  const avg=total?Math.round(contables.reduce((s,a)=>s+a.progreso,0)/total*10)/10:0;
+  const exTot=contables.reduce((s,a)=>{const e=parseEx(a.examenes);return s+e.r;},0);
+  const exSup=contables.reduce((s,a)=>{const e=parseEx(a.examenes);return s+e.s;},0);
+  const exMax=contables.reduce((s,a)=>{const e=parseEx(a.examenes);return s+e.t;},0);
+  document.getElementById('kpi-total').textContent=pool.length+(pool.length-contables.length>0?' (+'+(pool.length-contables.length)+' N/L)':'');
   document.getElementById('kpi-superan').textContent=sup;
   document.getElementById('kpi-nosuperan').textContent=total-sup;
   document.getElementById('kpi-pct').textContent=pct+'%';
-  document.getElementById('kpi-examenes').textContent=ex+' exámenes';
+  document.getElementById('kpi-examenes').textContent=exTot+'/'+exSup+'/'+exMax;
   document.getElementById('kpi-curso-lbl').textContent=activeCurso==='__ALL__'?'Todos los cursos':activeCurso;
   document.getElementById('bar-pct-lbl').textContent=pct+'%';
   document.getElementById('bar-pct-fill').style.width=pct+'%';
   document.getElementById('bar-avg').textContent=avg+'%';
-  document.getElementById('bar-examenes').textContent=ex;
+  document.getElementById('bar-examenes').textContent=exTot+'/'+exSup+'/'+exMax;
 }
 
 /* ─── RANGOS ─────────────────────────────────────────────────────── */
@@ -677,8 +688,12 @@ document.getElementById('sel-pp-hist')?.addEventListener('change',()=>{histCurre
   const allRows=Object.values(grouped).map(g=>{
     const recs=g.registros,nC=g.cursos.size||1;
     const avg=Math.round(recs.reduce((s,r)=>s+r.progreso,0)/recs.length*10)/10;
-    const sup=recs.filter(r=>r.supera_75===1).length,ex=recs.reduce((s,r)=>s+(r.examenes||0),0);
-    return{nombre:g.nombre,nCursos:nC,cursos:[...g.cursos],avgProg:avg,superan:sup,examenes:ex,total:recs.length};
+    const contRecs=recs.filter(r=>!r.no_llamar);
+    const sup=contRecs.filter(r=>r.supera_75===1).length;
+    const exR=contRecs.reduce((s,r)=>{const e=parseEx(r.examenes);return s+e.r;},0);
+    const exS=contRecs.reduce((s,r)=>{const e=parseEx(r.examenes);return s+e.s;},0);
+    const exT=contRecs.reduce((s,r)=>{const e=parseEx(r.examenes);return s+e.t;},0);
+    return{nombre:g.nombre,nCursos:nC,cursos:[...g.cursos],avgProg:avg,superan:sup,examenes:exR+'/'+exS+'/'+exT,total:contRecs.length};
   });
   // KPIs
   const nc1=allRows.filter(r=>r.nCursos===1).length,nc2=allRows.filter(r=>r.nCursos===2).length,nc3=allRows.filter(r=>r.nCursos>=3).length;
@@ -718,7 +733,7 @@ document.getElementById('sel-pp-hist')?.addEventListener('change',()=>{histCurre
           <td>${cb||'<span style="color:var(--text-muted)">—</span>'}</td>
           <td style="text-align:center;"><div style="display:flex;align-items:center;gap:.5rem;justify-content:center;"><div style="width:55px;height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;"><div style="height:100%;width:${Math.min(r.avgProg,100)}%;background:${pc};border-radius:99px;"></div></div><span style="font-family:var(--mono);font-size:.78rem;">${r.avgProg}%</span></div></td>
           <td style="text-align:center;font-family:var(--mono);"><span class="badge-g ${r.superan===r.total?'badge-done':r.superan>0?'badge-pending':'badge-cat'}">${r.superan}/${r.total}</span></td>
-          <td style="text-align:center;font-family:var(--mono);font-size:.85rem;">${r.examenes}</td>
+          <td style="text-align:center;font-family:var(--mono);font-size:.85rem;">${(()=>{const p=(r.examenes||'0/0/0').split('/');const morado=parseInt(p[0])<parseInt(p[2]);return morado?`<span style="color:#7C3AED;font-weight:700;">${r.examenes}</span>`:r.examenes;})()}</td>
         </tr>`;
       }).join('');
     }

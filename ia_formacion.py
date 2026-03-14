@@ -34,11 +34,22 @@ load_dotenv()
 # CONFIGURACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 FORM_DB      = "formacion.db"
 MODEL_NAME   = "llama-3.3-70b-versatile"  # modelo gratuito, muy potente en español
 
 _client: Groq | None = None
+
+
+def _ex_realizados(val):
+    """Extrae el número de exámenes realizados de un valor R/S/T o int."""
+    if val is None: return 0
+    s = str(val).strip()
+    if '/' in s:
+        try: return int(s.split('/')[0])
+        except: return 0
+    try: return int(float(s))
+    except: return 0
 
 
 def _get_client() -> Groq:
@@ -193,7 +204,7 @@ def analizar_alumno(alumno_id: int) -> dict:
     nombre    = alumno.get("nombre", "")
     curso     = alumno.get("curso") or "Sin curso"
     progreso  = float(alumno.get("progreso") or 0)
-    examenes  = int(alumno.get("examenes") or 0)
+    examenes  = _ex_realizados(alumno.get("examenes"))
     supera_75 = bool(alumno.get("supera_75"))
     fecha_fin = alumno.get("fecha_fin")
     fecha_ini = alumno.get("fecha_inicio")
@@ -449,7 +460,7 @@ def predecir_riesgo_curso(tutor_id: int, curso: str) -> dict:
         datos_alumnos.append({
             "nombre":    a.get("nombre", ""),
             "progreso":  progreso,
-            "examenes":  int(a.get("examenes") or 0),
+            "examenes":  _ex_realizados(a.get("examenes")),
             "supera_75": bool(a.get("supera_75")),
             "dias_restantes": dias,
             "tiene_telefono": bool(a.get("telefono")),
@@ -588,7 +599,7 @@ def ranking_riesgo(tutor_id: int) -> list[dict]:
             "nombre":         nombre,
             "curso":          curso,
             "progreso":       progreso,
-            "examenes":       int(a.get("examenes") or 0),
+            "examenes":       _ex_realizados(a.get("examenes")),
             "supera_75":      supera,
             "dias_restantes": dias,
             "telefono":       telefono,

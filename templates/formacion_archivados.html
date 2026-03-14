@@ -145,14 +145,17 @@
   {# ── CUERPO: DETALLE DEL CURSO ── #}
   <div class="curso-body">
     {# KPI mini del curso #}
+    {% set n_nollamar = g.alumnos | selectattr('no_llamar') | list | length %}
     <div class="kpi-mini">
       <div class="kpi-mini-item">
         <div class="klabel">Alumnos</div>
         <div class="kval">{{ g.total }}</div>
+        {% if n_nollamar %}<div style="font-size:.6rem;color:var(--red);">{{ n_nollamar }} excluido{{ 's' if n_nollamar!=1 else '' }}</div>{% endif %}
       </div>
       <div class="kpi-mini-item">
         <div class="klabel">Superan 75%</div>
         <div class="kval" style="color:var(--accent);">{{ g.superan }}</div>
+        {% if n_nollamar %}<div style="font-size:.6rem;color:var(--text-muted);">sin no llamar</div>{% endif %}
       </div>
       <div class="kpi-mini-item">
         <div class="klabel">Tasa éxito</div>
@@ -187,7 +190,14 @@
         <tbody>
           {% for a in g.alumnos %}
           <tr>
-            <td style="font-weight:600;">{{ a.nombre }}</td>
+            <td style="font-weight:600;">
+              {{ a.nombre }}
+              {% if a.get('no_llamar') %}
+              <span style="display:inline-block; margin-left:.4rem; font-size:.6rem;
+                background:rgba(248,81,73,.15); color:var(--red); border:1px solid rgba(248,81,73,.3);
+                border-radius:4px; padding:.1rem .35rem; font-weight:600; vertical-align:middle;">NO LLAMAR</span>
+              {% endif %}
+            </td>
             <td>
               <div style="display:flex; align-items:center; gap:.5rem;">
                 <div style="flex:1; height:6px; background:var(--bg3); border-radius:99px; overflow:hidden; min-width:55px;">

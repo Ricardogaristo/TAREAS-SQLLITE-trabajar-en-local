@@ -4,9 +4,7 @@
 {% block content %}
 
 {# ── Agrupar alarmas por prioridad para los KPIs #}
-{% set criticas     = alarmas | selectattr('prioridad', 'equalto', 1) | list %}
-{% set urgentes     = alarmas | selectattr('prioridad', 'equalto', 2) | list %}
-{% set informativas = alarmas | selectattr('prioridad', 'equalto', 3) | list %}
+{# cursos_resumen viene del servidor — ver formacion.py ruta formacion_alarmas #}
 
 {# ── STICKY HEADER ── #}
 <div class="sticky-top-bar">
@@ -23,46 +21,59 @@
 
 {# ── KPI STRIP ── #}
 <div class="row g-3 mb-3">
-  <div class="col-6 col-md-3">
-    <div class="stat-card blue">
-      <div class="stat-label">Tareas hoy</div>
-      <div class="stat-value">{{ total }}</div>
-      <div style="font-size:.75rem; color:var(--text-muted);">alarmas activas</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="stat-card red">
-      <div class="stat-label">🔴 Críticas</div>
-      <div class="stat-value" style="color:var(--red);">{{ criticas | length }}</div>
-      <div style="font-size:.75rem; color:var(--text-muted);">acción inmediata</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="stat-card amber">
-      <div class="stat-label">🟡 Urgentes</div>
-      <div class="stat-value" style="color:var(--amber);">{{ urgentes | length }}</div>
-      <div style="font-size:.75rem; color:var(--text-muted);">seguimiento hoy</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    {% set pct  = ((hechas / total * 100) | round(0) | int) if total else 0 %}
-    {% set circ = 2 * 3.14159 * 18 %}
-    {% set offset = circ * (1 - pct / 100) %}
-    <div class="stat-card green" style="display:flex; align-items:center; gap:.6rem;">
-      <div>
-        <div class="stat-label">Completadas</div>
-        <div class="stat-value" style="color:var(--accent); font-size:1.5rem;">{{ pct }}%</div>
-        <div style="font-size:.75rem; color:var(--text-muted);">{{ hechas }}/{{ total }} tareas</div>
+  {# ── Recuadros de cursos (resumen + fechas + porcentaje) ── #}
+  {% for c in cursos_resumen %}
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="stat-card" style="padding:1rem 1.1rem; display:flex; flex-direction:column; gap:.5rem; border-left:4px solid
+      {{ 'var(--accent)' if c.avg_prog >= 75 else ('var(--amber)' if c.avg_prog >= 50 else 'var(--red)') }};">
+
+      {# Nombre del curso #}
+      <div style="font-weight:700; font-size:.82rem; line-height:1.3; color:var(--text);">{{ c.nombre }}</div>
+
+      {# Fechas #}
+      <div style="display:flex; gap:.75rem; font-size:.72rem; color:var(--text-muted);">
+        <span>📅 Inicio: <strong>{{ c.f_ini if c.f_ini else '—' }}</strong></span>
+        <span>🏁 Fin: <strong>{{ c.f_fin if c.f_fin else '—' }}</strong></span>
       </div>
-      <svg class="ring-svg ms-auto" viewBox="0 0 46 46">
-        <circle class="ring-bg" cx="23" cy="23" r="18"/>
-        <circle class="ring-fg" cx="23" cy="23" r="18"
-          stroke="{{ '#3fb950' if pct==100 else ('#d29922' if pct>0 else '#f85149') }}"
-          stroke-dasharray="{{ circ }}"
-          stroke-dashoffset="{{ offset }}"/>
-      </svg>
+
+      {# Barra de progreso #}
+      <div>
+        <div style="display:flex; justify-content:space-between; font-size:.7rem; color:var(--text-muted); margin-bottom:.25rem;">
+          <span>Progreso medio</span>
+          <span style="font-family:var(--mono); font-weight:700;
+            color:{{ 'var(--accent)' if c.avg_prog >= 75 else ('var(--amber)' if c.avg_prog >= 50 else 'var(--red)') }};">
+            {{ c.avg_prog }}%
+          </span>
+        </div>
+        <div style="height:6px; background:var(--bg3); border-radius:99px; overflow:hidden;">
+          <div style="height:100%; width:{{ [c.avg_prog, 100]|min }}%; border-radius:99px;
+            background:{{ 'var(--accent)' if c.avg_prog >= 75 else ('var(--amber)' if c.avg_prog >= 50 else 'var(--red)') }};"></div>
+        </div>
+      </div>
+
+      {# Resumen alumnos #}
+      <div style="display:flex; gap:.5rem; flex-wrap:wrap; font-size:.7rem;">
+        <span style="background:var(--bg3); border-radius:5px; padding:.15rem .45rem;">
+          👥 {{ c.total }} alumnos
+        </span>
+        <span style="background:var(--bg3); border-radius:5px; padding:.15rem .45rem; color:var(--accent);">
+          ✔ {{ c.superan }} superan 75%
+        </span>
+        <span style="background:var(--bg3); border-radius:5px; padding:.15rem .45rem;
+          color:{{ 'var(--accent)' if c.pct_exito >= 75 else ('var(--amber)' if c.pct_exito >= 50 else 'var(--red)') }};">
+          🎯 {{ c.pct_exito }}% éxito
+        </span>
+      </div>
+
     </div>
   </div>
+  {% else %}
+  <div class="col-12">
+    <div class="stat-card" style="text-align:center; color:var(--text-muted); font-size:.85rem;">
+      Sin cursos activos
+    </div>
+  </div>
+  {% endfor %}
 </div>
 
 {# ══════════════════════════════════════════════════════════════════
@@ -285,6 +296,20 @@
           <span id="mc-dias-trans"></span>
           <span id="mc-dias-rest"></span>
         </div>
+      </div>
+
+      {# % Éxito del curso #}
+      <div id="mc-exito-wrap" style="display:none; margin-top:.6rem; padding:.65rem .85rem;
+           background:var(--bg3); border-radius:8px; border:1px solid var(--border);">
+        <div style="font-size:.68rem; color:var(--text-muted); text-transform:uppercase;
+                    letter-spacing:.05em; margin-bottom:.4rem;">Tasa de éxito del curso</div>
+        <div style="display:flex; align-items:center; gap:.75rem;">
+          <div style="flex:1; height:7px; background:var(--bg2); border-radius:99px; overflow:hidden;">
+            <div id="mc-exito-bar" style="height:100%; border-radius:99px; transition:width .4s;"></div>
+          </div>
+          <span id="mc-exito-pct" style="font-family:var(--mono); font-size:.9rem; font-weight:800; min-width:38px; text-align:right;"></span>
+        </div>
+        <div id="mc-exito-detalle" style="font-size:.72rem; color:var(--text-muted); margin-top:.3rem;"></div>
       </div>
 
       {# Resumen de estado #}
@@ -658,6 +683,29 @@ function abrirModalCurso(nombreCurso) {
     resumen = `El curso acaba de empezar (${diasTrans} día${diasTrans!==1?'s':''} activo). Todavía quedan ${diasRest} día${diasRest!==1?'s':''} por delante.`;
   }
 
+  // % Éxito: superan_75 / total_alumnos (viene del primer evento con esos datos)
+  const evConStats = evs.find(e => e.total_alumnos !== undefined);
+  const exitoWrap  = document.getElementById('mc-exito-wrap');
+  if (evConStats && evConStats.total_alumnos > 0) {
+    const total   = evConStats.total_alumnos;
+    const superan = evConStats.superan_75 || 0;
+    const pctExito = Math.round(superan / total * 100);
+    const exitoColor = pctExito >= 75 ? 'var(--accent)' : pctExito >= 50 ? 'var(--amber)' : 'var(--red)';
+
+    const bar = document.getElementById('mc-exito-bar');
+    bar.style.background = exitoColor;
+    bar.style.width = '0%';
+    setTimeout(() => { bar.style.width = pctExito + '%'; }, 50);
+
+    document.getElementById('mc-exito-pct').textContent  = pctExito + '%';
+    document.getElementById('mc-exito-pct').style.color  = exitoColor;
+    document.getElementById('mc-exito-detalle').textContent =
+      `${superan} de ${total} alumno${total !== 1 ? 's' : ''} superan el 75%`;
+    exitoWrap.style.display = '';
+  } else {
+    exitoWrap.style.display = 'none';
+  }
+
   // Alumnos únicos
   const alumnos = [...new Set(evs.map(e => e.alumno).filter(Boolean))];
 
@@ -817,15 +865,16 @@ function buildGantt(eventos, notas) {
   // Construir rangos por curso (inicio más temprano, fin más tardío)
   const rangos = {};
   eventos.forEach(ev => {
-    if (!rangos[ev.curso]) rangos[ev.curso] = { inicio: null, fin: null };
+    if (!rangos[ev.curso]) rangos[ev.curso] = { inicio: null, fin: null, sinFecha: false };
     const f = new Date(ev.fecha);
     if (ev.tipo === 'inicio') {
       if (!rangos[ev.curso].inicio || f < new Date(rangos[ev.curso].inicio))
         rangos[ev.curso].inicio = ev.fecha;
-    }
-    if (ev.tipo === 'fin') {
+    } else if (ev.tipo === 'fin') {
       if (!rangos[ev.curso].fin || f > new Date(rangos[ev.curso].fin))
         rangos[ev.curso].fin = ev.fecha;
+    } else if (ev.tipo === 'sin_fecha') {
+      rangos[ev.curso].sinFecha = true;
     }
   });
 
@@ -844,7 +893,7 @@ function buildGantt(eventos, notas) {
   // Filtrar por selección
   const filtro = select ? select.value : '';
   const cursos = Object.keys(rangos).filter(c => !filtro || c === filtro)
-                       .filter(c => rangos[c].inicio || rangos[c].fin);
+                       .filter(c => rangos[c].inicio || rangos[c].fin || rangos[c].sinFecha);
 
   ganttCursosActivos = Object.keys(rangos).filter(k => !rangos[k].manual);
 
@@ -895,15 +944,23 @@ function buildGantt(eventos, notas) {
     } else {
       col = cursoPaleta[curso] || PALETA[i % PALETA.length];
     }
-    const ini = info.inicio ? new Date(info.inicio) : new Date(info.fin);
-    const fin = info.fin    ? new Date(info.fin)    : new Date(info.inicio);
+    let ini, fin;
+    if (info.sinFecha && !info.inicio && !info.fin) {
+      // Curso sin fechas: barra de 1 día en hoy
+      const hoyD = new Date(); hoyD.setHours(0,0,0,0);
+      const manD  = new Date(hoyD); manD.setDate(hoyD.getDate() + 1);
+      ini = hoyD; fin = manD;
+    } else {
+      ini = info.inicio ? new Date(info.inicio) : new Date(info.fin);
+      fin = info.fin    ? new Date(info.fin)    : new Date(info.inicio);
+    }
     return {
       label: curso,
-      data: [{ x: [ini, fin], y: curso, manual: info.manual, manualIdx: info.manualIdx }],
-      backgroundColor: col.bg.replace('.18)', '.55)').replace('.2)', '.55)').replace('.22)', '.55)'),
-      borderColor: info.manual ? col.border : col.border,
-      borderWidth: info.manual ? 2 : 2,
-      borderDash: info.manual ? [5,3] : [],
+      data: [{ x: [ini, fin], y: curso, manual: info.manual, manualIdx: info.manualIdx, sinFecha: info.sinFecha }],
+      backgroundColor: info.sinFecha ? 'rgba(125,125,125,.35)' : col.bg.replace('.18)', '.55)').replace('.2)', '.55)').replace('.22)', '.55)'),
+      borderColor: info.sinFecha ? 'rgba(125,125,125,.7)' : col.border,
+      borderWidth: 2,
+      borderDash: info.sinFecha ? [4,3] : (info.manual ? [5,3] : []),
       borderSkipped: false,
       borderRadius: 5,
     };
@@ -958,6 +1015,7 @@ function buildGantt(eventos, notas) {
               if (item.dataset.type === 'scatter') return `📌 ${item.raw.nota}`;
               const [ini, fin] = item.raw.x;
               const fmt = d => d.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
+              if (item.raw.sinFecha) return '⚠ Sin fechas asignadas — importa el Excel con columnas Fecha Inicio / Fecha Fin';
               const extra = item.raw.manual ? '  ✏ Clic para editar' : '  🔍 Clic para ver detalle';
               return `${fmt(new Date(ini))} → ${fmt(new Date(fin))}${extra}`;
             }

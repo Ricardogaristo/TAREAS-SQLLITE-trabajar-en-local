@@ -3,35 +3,6 @@
 
 {% block content %}
 
-<style>
-/* ── Tablet: compactar sin romper layout ─────────────── */
-@media (max-width: 991px) {
-  #tablaAlumnos th, #tablaAlumnos td {
-    padding: .3rem .35rem;
-    font-size: .73rem;
-  }
-  #tablaAlumnos td[data-label="Curso"] .badge-g { max-width:100px; font-size:.63rem; }
-  #tablaAlumnos td[data-label="Teléfono"] input { min-width:65px; font-size:.68rem; }
-  .gestion-btn { font-size:.66rem; padding:.18rem .3rem; }
-  .btn-sm      { padding:.2rem .38rem; font-size:.7rem; }
-}
-
-/* ── Móvil: ocultar tabla, mostrar tarjetas JS ───────── */
-@media (max-width: 767px) {
-  #tablaAlumnos          { display: none !important; }
-  #no-results            { display: none !important; }
-  .table-responsive      { overflow: visible; }
-  #cards-mobile          { display: block !important; }
-
-  /* Filtros en columna */
-  .row.g-2.mb-3 > [class*="col-"] {
-    width: 100%; max-width: 100%; flex: 0 0 100%;
-  }
-}
-</style>
-
-
-
 <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
   <div>
     <h4 style="font-weight:700; margin:0;">🎓 Formación</h4>
@@ -40,11 +11,15 @@
     </div>
   </div>
   <div class="d-flex gap-2 flex-wrap">
-    <a href="{{ url_for('formacion.exportar_excel') }}" class="btn btn-g-success">
-      ⬇ Descargar Excel
-    </a>
-    <a href="{{ url_for('formacion.formacion_alarmas') }}" class="btn btn-g-warning">
+    <button onclick="exportarCursoExcel()" class="btn btn-g-primary" id="btn-exportar-curso"
+      title="Exportar curso seleccionado en el filtro"
+      style="width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;">
+      📊 Excel — Todos
+    </button>
+    <a href="{{ url_for('formacion.formacion_alarmas') }}" class="btn btn-g-warning"
+       style="position:relative;">
       🔔 Alarmas
+
     </a>
     <a href="{{ url_for('formacion.formacion_archivados') }}" class="btn btn-g-ghost"
        style="position:relative;">
@@ -68,14 +43,29 @@
     <a href="{{ url_for('formacion.formacion_ia') }}" class="btn btn-g-primary">
       🤖 IA
     </a>
-    {% if alumnos %}
-    <form method="POST" action="{{ url_for('formacion.borrar_todos') }}"
-          onsubmit="return confirm('¿Borrar TODOS los alumnos? Esta acción no se puede deshacer.')">
-      <button type="submit" class="btn btn-g-danger">🗑 Borrar todos</button>
-    </form>
-    {% endif %}
+    <a href="{{ url_for('cursos.repositorio_cursos') }}" class="btn btn-g-ghost">
+      📦 Repositorio
+    </a>
   </div>
 </div>
+
+{% if alumnos %}
+<!-- Zona de peligro — poco visible, al margen -->
+<div style="margin-top:2rem;text-align:right;">
+  <details style="display:inline-block;">
+    <summary style="cursor:pointer;font-size:.72rem;color:var(--text-muted);list-style:none;user-select:none;">
+      ··· zona de peligro
+    </summary>
+    <div style="margin-top:.5rem;padding:.75rem 1rem;border:1px solid var(--red);border-radius:8px;background:rgba(192,57,43,.05);">
+      <div style="font-size:.75rem;color:var(--text-muted);margin-bottom:.5rem;">Esta acción eliminará todos los alumnos de forma permanente.</div>
+      <form method="POST" action="{{ url_for('formacion.borrar_todos') }}"
+            onsubmit="return confirm('¿Borrar TODOS los alumnos? Esta acción no se puede deshacer.')">
+        <button type="submit" class="btn btn-g-danger btn-sm">🗑 Borrar todos los alumnos</button>
+      </form>
+    </div>
+  </details>
+</div>
+{% endif %}
 
 <!-- Alertas -->
 {% for err in errores %}
@@ -120,6 +110,7 @@
   </div>
 </div>
 
+{% set cursos_activos = alumnos | map(attribute='curso') | select | unique | list | sort %}
 <!-- ── Lista de alumnos ───────────────────────────────────────────────────── -->
 <div class="gcard">
   <div class="gcard-header">
@@ -204,37 +195,51 @@
         </thead>
         <tbody id="tbody-alumnos">
           {% for a in alumnos %}
-          {% set curso_val = a['curso'] if a['curso'] else '—' %}
+          {% set curso_val = a['curso'] if a['curso'] else '' %}
           {% set nombre_val = a['nombre'] %}
-          {% set examenes_val = a['examenes'] if a['examenes'] is not none else 0 %}
+          {% set examenes_val = (a['examenes'] | string) if a['examenes'] is not none else '0/0/0' %}
           <tr data-search="{{ nombre_val|lower }} {{ curso_val|lower }}"
               data-curso="{{ curso_val }}"
               data-estado="{{ 'supera' if a['supera_75'] == 1 else 'no_supera' }}">
 
             <td data-label="Curso" style="max-width:160px;">
-              <button type="button"
-                      onclick="abrirModalCurso('{{ curso_val | replace("'","&#39;") }}', '{{ a['fecha_inicio'] or '' }}', '{{ a['fecha_fin'] or '' }}')"
-                      style="background:none; border:none; padding:0; cursor:pointer; width:100%;"
-                      title="Ver fechas del curso">
-                <span class="badge-g badge-cat"
-                      style="max-width:155px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-                             display:block; cursor:pointer; border-style:dashed; transition:background .15s;"
-                      onmouseover="this.style.background='var(--bg3)'"
-                      onmouseout="this.style.background=''"
-                      title="{{ curso_val }}">
-                  📅 {{ curso_val }}
-                </span>
-              </button>
+              {% if curso_val %}
+              <span class="badge-g badge-cat"
+                    onclick="abrirModalCurso(this)"
+                    data-curso="{{ curso_val }}"
+                    data-finicio="{{ a['fecha_inicio'] if a['fecha_inicio'] else '' }}"
+                    data-ffin="{{ a['fecha_fin'] if a['fecha_fin'] else '' }}"
+                    data-progreso="{{ a['progreso'] }}"
+                    style="max-width:155px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; cursor:pointer;" title="Ver detalles del curso">{{ curso_val }}</span>
+              {% else %}
+              <span class="badge-g badge-cat" style="max-width:155px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; opacity:.4;">—</span>
+              {% endif %}
             </td>
 
             <td data-label="Nombre" style="font-weight:600; font-size:.85rem; cursor:pointer;"
-                onclick="abrirGestion({{ a['id'] }}, '{{ a['nombre'] | replace("'","&#39;") }}', {{ 1 if a['gestionado'] == 1 else 0 }}, '{{ (a['tipo_gestion'] or '') | replace("'","&#39;") }}', '{{ (a['comentario'] or '') | replace("'","&#39;") | replace('\n',' ') }}')"
-                title="Abrir gestión de {{ nombre_val }}">
-              <span style="display:flex; align-items:center; gap:.35rem;">
-                <span class="priv-field" data-real="{{ nombre_val | e }}"
-                      onclick="revealPriv(event, this)"
-                      title="Clic para revelar">{{ nombre_val }}</span>
-    
+                onclick="abrirModalAlumno({
+                  id:       {{ a['id'] }},
+                  nombre:   '{{ nombre_val | replace("'","&#39;") }}',
+                  curso:    '{{ curso_val  | replace("'","&#39;") }}',
+                  progreso: {{ a['progreso'] }},
+                  examenes: '{{ examenes_val }}',
+                  supera:   {{ 1 if a['supera_75'] == 1 else 0 }},
+                  inicio:   '{{ a["fecha_inicio"] if a["fecha_inicio"] else "" }}',
+                  fin:      '{{ a["fecha_fin"]    if a["fecha_fin"]    else "" }}',
+                  no_llamar: (document.getElementById('badge-nollamar-{{ a["id"] }}')?.style.display === 'inline-block' ? 1 : 0)
+                })">
+              <span id="nombre-span-{{ a['id'] }}">{{ nombre_val }}</span>
+              {% if a['no_llamar'] and a['no_llamar'] != 0 %}
+              <span id="badge-nollamar-{{ a['id'] }}" style="display:inline-block; margin-left:.4rem; font-size:.6rem;
+                    background:rgba(248,81,73,.15); color:var(--red); border:1px solid rgba(248,81,73,.3);
+                    border-radius:4px; padding:.1rem .35rem; vertical-align:middle; font-weight:600;">NO PARTICIPA</span>
+              {% else %}
+              <span id="badge-nollamar-{{ a['id'] }}" style="display:none; margin-left:.4rem; font-size:.6rem;
+                    background:rgba(248,81,73,.15); color:var(--red); border:1px solid rgba(248,81,73,.3);
+                    border-radius:4px; padding:.1rem .35rem; vertical-align:middle; font-weight:600;">NO PARTICIPA</span>
+              {% endif %}
+            </td>
+
             <td data-label="Progreso" style="min-width:120px;">
               <div style="display:flex; align-items:center; gap:.4rem;">
                 <div style="flex:1; height:6px; background:var(--bg3); border-radius:99px; overflow:hidden; min-width:55px;">
@@ -264,8 +269,17 @@
               {% endif %}
             </td>
 
-            <td data-label="Exámenes" style="font-family:var(--mono); font-size:.82rem; text-align:center;">
-              {{ examenes_val }}
+            <td data-label="Exámenes" style="text-align:center; padding:.3rem .5rem;">
+              {% if a.get('ex_pending') %}
+              <span style="display:inline-flex; align-items:center; gap:.25rem;
+                           background:rgba(124,58,237,.12); border:1.5px solid rgba(124,58,237,.35);
+                           border-radius:6px; padding:.2rem .5rem;
+                           font-family:var(--mono); font-size:.8rem; font-weight:700; color:#7C3AED;">
+                <span style="font-size:.7rem;">⚠</span>{{ examenes_val }}
+              </span>
+              {% else %}
+              <span style="font-family:var(--mono); font-size:.82rem;">{{ examenes_val }}</span>
+              {% endif %}
             </td>
 
             {# ── Importaciones — clickable ── #}
@@ -310,31 +324,16 @@
             <td data-label="Teléfono" style="min-width:140px;">
               <form method="POST" action="{{ url_for('formacion.editar_alumno', alumno_id=a['id']) }}"
                     style="display:flex; gap:.3rem; align-items:center;">
-                {% if a['telefono'] %}
-                <span class="priv-field tel-display" data-real="{{ a['telefono'] | e }}"
-                      onclick="revealPriv(event, this)"
-                      title="Clic para revelar"
-                      style="font-family:var(--mono); font-size:.75rem; padding:.25rem .5rem;
-                             min-width:90px; display:inline-block; cursor:pointer;
-                             border:1px solid var(--border-soft); border-radius:6px;
-                             background:var(--bg3);">{{ a['telefono'] }}</span>
                 <input type="text" name="telefono"
                        value="{{ a['telefono'] if a['telefono'] else '' }}"
-                       class="form-control tel-input"
-                       style="font-size:.75rem; padding:.25rem .5rem; min-width:90px; display:none;"
-                       placeholder="+549…">
-                {% else %}
-                <input type="text" name="telefono"
-                       value=""
                        class="form-control" style="font-size:.75rem; padding:.25rem .5rem; min-width:90px;"
                        placeholder="+549…">
-                {% endif %}
                 <button type="submit" class="btn btn-g-ghost btn-sm" title="Guardar teléfono" style="padding:.25rem .45rem; font-size:.78rem;">💾</button>
               </form>
             </td>
 
-            <td data-label="Acciones" style="text-align:center;">
-              <div class="acciones-div" style="display:flex; gap:.3rem; align-items:center; justify-content:center; flex-wrap:nowrap;">
+            <td data-label="Acciones" style="white-space:nowrap; text-align:center;">
+              <div style="display:flex; gap:.3rem; align-items:center; justify-content:center;">
                 {% if a['telefono'] %}
                   <a href="{{ url_for('formacion.whatsapp_alumno', alumno_id=a['id']) }}"
                      target="_blank" class="btn btn-g-success btn-sm" title="Enviar WhatsApp"
@@ -350,7 +349,7 @@
                           nombre:   '{{ nombre_val | replace("'","&#39;") }}',
                           curso:    '{{ curso_val  | replace("'","&#39;") }}',
                           progreso: {{ a['progreso'] }},
-                          examenes: {{ examenes_val }},
+                          examenes: '{{ examenes_val }}',
                           supera:   {{ 1 if a['supera_75'] == 1 else 0 }},
                           inicio:   '{{ a["fecha_inicio"] if a["fecha_inicio"] else "" }}',
                           fin:      '{{ a["fecha_fin"]    if a["fecha_fin"]    else "" }}'
@@ -381,9 +380,6 @@
       </table>
 
       <!-- Sin resultados por filtro -->
-      <!-- Tarjetas móvil (generadas por JS) -->
-      <div id="cards-mobile" style="display:none;"></div>
-
       <div id="no-results" style="display:none; text-align:center; padding:2.5rem; color:var(--text-muted);">
         <div style="font-size:1.8rem; margin-bottom:.5rem;">🔍</div>
         Ningún alumno coincide con los filtros aplicados.
@@ -409,6 +405,42 @@
   </div>
 </div>
 
+<!-- ── Archivar curso ──────────────────────────────────────────────────────── -->
+{% if cursos_activos %}
+<div class="gcard mb-4 mt-4">
+  <div class="gcard-header">
+    <span style="color:var(--text-muted)">📦</span>
+    <span class="gcard-title">Archivar curso finalizado</span>
+    <span style="font-size:.75rem; color:var(--text-muted); margin-left:auto;">
+      Los alumnos del curso se moverán al archivador y no aparecerán en la lista activa
+    </span>
+  </div>
+  <div class="gcard-body">
+    <form method="POST" action="{{ url_for('formacion.archivar_curso') }}"
+          onsubmit="return confirm('¿Archivar el curso «' + document.getElementById('sel-curso-arch').value + '»? Los alumnos se moverán al archivador. Podrás restaurarlos en cualquier momento.')">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label">Seleccionar curso</label>
+          <select name="curso" id="sel-curso-arch" class="form-control" required>
+            <option value="" disabled selected>— Elegir curso —</option>
+            {% for c in cursos_activos %}
+            {% set cnt = alumnos | selectattr('curso', 'equalto', c) | list | length %}
+            <option value="{{ c }}">{{ c }}  ({{ cnt }} alumno{{ 's' if cnt != 1 else '' }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-g-ghost w-100"
+                  style="border-color:var(--amber); color:var(--amber);">
+            📦 Archivar curso
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <!-- Formulario oculto para borrar curso seleccionado -->
 <form id="form-borrar-curso" method="POST"
       action="/formacion/borrar-curso"
@@ -416,9 +448,190 @@
   <input type="hidden" name="curso" id="input-borrar-curso">
 </form>
 
+
+<!-- ══════════════════════════════════════════════════════════════
+     MODAL DETALLES DE CURSO
+══════════════════════════════════════════════════════════════════ -->
+<div id="modal-curso" style="
+  display:none; position:fixed; inset:0; z-index:9999;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center; padding:1rem;">
+
+  <div style="
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:14px; width:100%; max-width:460px;
+    box-shadow:0 20px 60px rgba(0,0,0,.4);
+    display:flex; flex-direction:column;">
+
+    <div style="padding:1.1rem 1.4rem .9rem; border-bottom:1px solid var(--border);
+      display:flex; align-items:center; gap:.75rem;">
+      <span style="font-size:1.25rem;">📚</span>
+      <div style="flex:1;">
+        <div id="mc-nombre" style="font-weight:700; font-size:.98rem; line-height:1.3;"></div>
+        <div style="font-size:.72rem; color:var(--text-muted); margin-top:.1rem;">Detalles del curso</div>
+      </div>
+      <button onclick="cerrarModalCurso()" style="background:none; border:none; color:var(--text-muted);
+        font-size:1.3rem; cursor:pointer; line-height:1; padding:.2rem .4rem; border-radius:6px;">✕</button>
+    </div>
+
+    <div style="padding:1.2rem 1.4rem; display:flex; flex-direction:column; gap:1rem;">
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.75rem;">
+        <div style="background:var(--bg3); border-radius:10px; padding:.8rem 1rem;">
+          <div style="font-size:.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem;">Fecha inicio</div>
+          <div id="mc-finicio" style="font-family:var(--mono); font-size:.88rem; font-weight:600;"></div>
+        </div>
+        <div style="background:var(--bg3); border-radius:10px; padding:.8rem 1rem;">
+          <div style="font-size:.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem;">Fecha fin</div>
+          <div id="mc-ffin" style="font-family:var(--mono); font-size:.88rem; font-weight:600;"></div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.75rem;">
+        <div style="background:var(--bg3); border-radius:10px; padding:.8rem 1rem;">
+          <div style="font-size:.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem;">Días totales</div>
+          <div id="mc-dias-total" style="font-family:var(--mono); font-size:1.1rem; font-weight:700;"></div>
+        </div>
+        <div style="background:var(--bg3); border-radius:10px; padding:.8rem 1rem;">
+          <div style="font-size:.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.3rem;">Días transcurridos</div>
+          <div id="mc-dias-trans" style="font-family:var(--mono); font-size:1.1rem; font-weight:700;"></div>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem;">
+          <span style="font-size:.72rem; color:var(--text-muted);">Avance temporal del curso</span>
+          <span id="mc-pct-tiempo" style="font-family:var(--mono); font-size:.78rem; font-weight:600;"></span>
+        </div>
+        <div style="height:8px; background:var(--bg3); border-radius:99px; overflow:hidden;">
+          <div id="mc-bar-tiempo" style="height:100%; border-radius:99px; transition:width .4s;"></div>
+        </div>
+      </div>
+
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem;">
+          <span style="font-size:.72rem; color:var(--text-muted);">Progreso del alumno en Moodle</span>
+          <span id="mc-pct-alumno" style="font-family:var(--mono); font-size:.78rem; font-weight:600;"></span>
+        </div>
+        <div style="height:8px; background:var(--bg3); border-radius:99px; overflow:hidden;">
+          <div id="mc-bar-alumno" style="height:100%; border-radius:99px; transition:width .4s;"></div>
+        </div>
+      </div>
+
+      <div id="mc-nota" style="font-size:.78rem; text-align:center; padding:.6rem .8rem; border-radius:8px; display:none;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════════════
      MODAL MENSAJE MOODLE
 ══════════════════════════════════════════════════════════════════ -->
+
+<!-- ── Modal: info alumno ─────────────────────────────────────────────────── -->
+<div id="modal-alumno" style="
+  display:none; position:fixed; inset:0; z-index:9998;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center; padding:1rem;">
+
+  <div style="
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:12px; width:100%; max-width:480px;
+    box-shadow:0 20px 60px rgba(0,0,0,.4);
+    display:flex; flex-direction:column; max-height:90vh;">
+
+    <!-- Cabecera -->
+    <div style="padding:1.1rem 1.4rem .9rem; border-bottom:1px solid var(--border);
+                display:flex; align-items:center; gap:.75rem; flex-shrink:0;">
+      <span style="font-size:1.2rem;">🎓</span>
+      <div style="flex:1;">
+        <div id="ma-nombre" style="font-weight:700; font-size:.98rem;"></div>
+        <div id="ma-curso" style="font-family:var(--mono); font-size:.72rem; color:var(--text-muted); margin-top:.1rem;
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:340px;"></div>
+      </div>
+      <button onclick="cerrarModalAlumno()" style="
+        background:none; border:none; color:var(--text-muted);
+        font-size:1.3rem; cursor:pointer; line-height:1; padding:.2rem .4rem;
+        border-radius:6px; transition:background .15s;"
+        onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='none'">✕</button>
+    </div>
+
+    <!-- Cuerpo -->
+    <div style="padding:1.2rem 1.4rem; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:1rem;">
+
+      <!-- Progreso -->
+      <div>
+        <div style="font-size:.75rem; font-weight:600; color:var(--text-muted); margin-bottom:.5rem;">PROGRESO</div>
+        <div style="display:flex; align-items:center; gap:.75rem;">
+          <div style="flex:1; height:10px; background:var(--bg3); border-radius:99px; overflow:hidden;">
+            <div id="ma-barra" style="height:100%; border-radius:99px; transition:width .4s;"></div>
+          </div>
+          <span id="ma-pct" style="font-family:var(--mono); font-weight:700; font-size:1rem; min-width:40px;"></span>
+        </div>
+        <div id="ma-estado" style="font-size:.75rem; margin-top:.4rem;"></div>
+      </div>
+
+      <!-- Stats -->
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:.75rem;">
+        <div id="ma-examenes-box" style="background:var(--bg3); border-radius:8px; padding:.6rem .8rem; text-align:center; transition:background .2s, border .2s; border:1.5px solid transparent;">
+          <div style="display:flex; align-items:center; justify-content:center; gap:.3rem;">
+            <span id="ma-examenes-warn" style="display:none; font-size:.75rem;">⚠</span>
+            <div id="ma-examenes" style="font-family:var(--mono); font-weight:700; font-size:1.1rem;"></div>
+          </div>
+          <div style="font-size:.65rem; color:var(--text-muted); margin-top:.15rem;">Exámenes</div>
+        </div>
+        <div style="background:var(--bg3); border-radius:8px; padding:.6rem .8rem; text-align:center;">
+          <div id="ma-inicio" style="font-family:var(--mono); font-weight:600; font-size:.8rem;"></div>
+          <div style="font-size:.65rem; color:var(--text-muted); margin-top:.15rem;">Inicio</div>
+        </div>
+        <div style="background:var(--bg3); border-radius:8px; padding:.6rem .8rem; text-align:center;">
+          <div id="ma-fin" style="font-family:var(--mono); font-weight:600; font-size:.8rem;"></div>
+          <div style="font-size:.65rem; color:var(--text-muted); margin-top:.15rem;">Fin</div>
+        </div>
+      </div>
+
+      <!-- Observaciones -->
+      <div style="background:var(--bg3);border-radius:10px;padding:.85rem 1rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">
+          <div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;">📝 Observaciones</div>
+          <span id="ma-obs-count" style="font-size:.68rem;font-family:var(--mono);color:var(--text-muted);"></span>
+        </div>
+        <div id="ma-obs-lista" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:.45rem;margin-bottom:.65rem;">
+          <div id="ma-obs-empty" style="font-size:.8rem;color:var(--text-muted);text-align:center;padding:.5rem 0;">Sin observaciones aún</div>
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:flex-end;">
+          <textarea id="ma-obs-input" rows="2" placeholder="Añadir observación…"
+            style="flex:1;resize:none;border:1px solid var(--border);border-radius:7px;padding:.5rem .7rem;font-size:.8rem;background:var(--bg2);color:var(--text);font-family:inherit;line-height:1.4;"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();guardarObservacion();}"></textarea>
+          <button onclick="guardarObservacion()" class="btn btn-g-primary btn-sm" style="padding:.45rem .9rem;height:fit-content;">＋</button>
+        </div>
+        <div style="font-size:.68rem;color:var(--text-muted);margin-top:.3rem;">Enter guarda · Shift+Enter nueva línea</div>
+      </div>
+
+      <!-- Checkbox no llamar -->
+      <label for="ma-nollamar-check" style="background:var(--bg3); border-radius:8px; padding:.85rem 1rem;
+                  display:flex; align-items:center; gap:.75rem; cursor:pointer; user-select:none;">
+        <input type="checkbox" id="ma-nollamar-check"
+               style="width:16px; height:16px; cursor:pointer; accent-color:var(--red);"
+               onchange="toggleNoLlamar(this.checked)">
+        <div style="flex:1;">
+          <div style="font-weight:600; font-size:.85rem;">No llamar / No molestar</div>
+          <div style="font-size:.72rem; color:var(--text-muted); margin-top:.1rem;">
+            El alumno aparecerá marcado con un aviso en la lista
+          </div>
+        </div>
+        <span style="font-size:1.1rem;">🔕</span>
+      </label>
+
+    </div>
+
+    <!-- Pie -->
+    <div style="padding:.9rem 1.4rem 1.1rem; border-top:1px solid var(--border); display:flex; gap:.6rem; flex-shrink:0;">
+      <button onclick="cerrarModalAlumno()" class="btn btn-g-ghost" style="flex:1;">Cerrar</button>
+      <button onclick="abrirMoodleDesdeModal()" class="btn btn-g-primary" style="flex:1;">📨 Mensaje Moodle</button>
+    </div>
+  </div>
+</div>
+
 <div id="modal-moodle" style="
   display:none; position:fixed; inset:0; z-index:9999;
   background:rgba(0,0,0,.55); backdrop-filter:blur(4px);
@@ -521,131 +734,22 @@
   background:var(--accent); color:#fff; border-color:var(--accent);
 }
 @keyframes spin { to { transform:rotate(360deg); } }
-
-/* ── Gestión buttons ── */
-.gestion-btn {
-  font-size:.71rem; font-weight:600; padding:.22rem .55rem;
-  border-radius:6px; border:1px solid var(--border);
-  cursor:pointer; white-space:nowrap; transition:all .15s;
-  font-family:inherit; max-width:120px; overflow:hidden;
-  text-overflow:ellipsis; display:inline-block;
-}
-.gestion-nada    { background:var(--bg3); color:var(--text-muted); }
-.gestion-parcial { background:rgba(210,153,34,.12); color:var(--amber); border-color:var(--amber); }
-.gestion-ok      { background:rgba(63,185,80,.12);  color:var(--accent); border-color:var(--accent); }
-.gestion-btn:hover { opacity:.8; transform:translateY(-1px); }
-
-/* ── Gestión modal pills ── */
-.mg-pill {
-  padding:.3rem .7rem; border-radius:99px; border:1px solid var(--border);
-  background:var(--bg3); color:var(--text-muted); font-size:.77rem;
-  cursor:pointer; transition:all .15s; font-family:inherit;
-}
-.mg-pill:hover { background:var(--bg2); border-color:var(--accent); color:var(--accent); }
-.mg-pill.mg-pill-active {
-  background:rgba(63,185,80,.12); border-color:var(--accent);
-  color:var(--accent); font-weight:700;
-}
 </style>
-
-
-
-<hr style="border:none; border-top:1px solid var(--border); margin:1.5rem 0;">
-<!-- ── Archivar curso ──────────────────────────────────────────────────────── -->
-{% set cursos_activos = alumnos | map(attribute='curso') | select | unique | list | sort %}
-{% if cursos_activos %}
-<div class="gcard mb-4">
-  <div class="gcard-header">
-    <span style="color:var(--text-muted)">📦</span>
-    <span class="gcard-title">Archivar curso finalizado</span>
-    <span style="font-size:.75rem; color:var(--text-muted); margin-left:auto;">
-      Los alumnos del curso se moverán al archivador y no aparecerán en la lista activa
-    </span>
-  </div>
-  <div class="gcard-body">
-    <form method="POST" action="{{ url_for('formacion.archivar_curso') }}"
-          onsubmit="return confirm('¿Archivar el curso «' + document.getElementById('sel-curso-arch').value + '»? Los alumnos se moverán al archivador. Podrás restaurarlos en cualquier momento.')">
-      <div class="row g-3 align-items-end">
-        <div class="col-md-5">
-          <label class="form-label">Seleccionar curso</label>
-          <select name="curso" id="sel-curso-arch" class="form-control" required>
-            <option value="" disabled selected>— Elegir curso —</option>
-            {% for c in cursos_activos %}
-            {% set cnt = alumnos | selectattr('curso', 'equalto', c) | list | length %}
-            <option value="{{ c }}">{{ c }}  ({{ cnt }} alumno{{ 's' if cnt != 1 else '' }})</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-md-3">
-          <button type="submit" class="btn btn-g-ghost w-100"
-                  style="border-color:var(--amber); color:var(--amber);">
-            📦 Archivar curso
-          </button>
-        </div>
-      </div>
-    </form>
-  </div>
-</div>
-{% endif %}
 
 {% endblock %}
 
 {% block scripts %}
-<style>
-.priv-field {
-  filter: blur(4px);
-  transition: filter .2s ease;
-  cursor: pointer;
-  user-select: none;
-}
-.priv-field.revealed {
-  filter: none;
-  cursor: default;
-}
-</style>
-<script>
-  // ── Privacidad: revelar campo enmascarado 10s ─────────────────────────
-  window.revealPriv = function (e, el) {
-    e.stopPropagation();
-    if (el.classList.contains('revealed')) return;
-
-    const real = el.dataset.real || '';
-
-    // Si es el display del teléfono, mostrar el input editable en su lugar
-    if (el.classList.contains('tel-display')) {
-      const form  = el.closest('form');
-      const input = form && form.querySelector('.tel-input');
-      if (input) {
-        el.style.display    = 'none';
-        input.style.display = 'inline-block';
-        input.focus();
-        // Restaurar tras 10s si no se ha enviado el form
-        const restore = setTimeout(() => {
-          input.style.display = 'none';
-          el.style.display    = 'inline-block';
-        }, 10000);
-        form.addEventListener('submit', () => clearTimeout(restore), { once: true });
-      }
-      return;
-    }
-
-    // Campos de solo lectura (nombre)
-    if (real) el.textContent = real;
-    el.classList.add('revealed');
-    el.title = '';
-
-    setTimeout(() => {
-      el.classList.remove('revealed');
-      if (real) el.textContent = real; // el blur del CSS lo oscurece de nuevo
-      el.title = 'Clic para revelar';
-    }, 10000);
-  };
-</script>
 <script>
 /* ── MODAL MOODLE ──────────────────────────────────────────────── */
 
 let _alumnoActual = null;
 let _tipoActual   = 'seguimiento';
+
+// ── Formato de nombre: cada palabra con inicial mayúscula ──────
+function toTitleCase(str) {
+  if (!str) return str;
+  return str.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+}
 
 function abrirMoodle(alumno) {
   _alumnoActual = alumno;
@@ -657,8 +761,9 @@ function abrirMoodle(alumno) {
 
   // Info header
   const estado = alumno.supera ? '✔ Supera 75%' : '● Bajo 75%';
+  const nombreFmt = toTitleCase(alumno.nombre);
   document.getElementById('modal-alumno-info').textContent =
-    `${alumno.nombre}  ·  ${alumno.curso}  ·  ${alumno.progreso}%  ·  ${estado}`;
+    `${nombreFmt}  ·  ${alumno.curso}  ·  ${alumno.progreso}%  ·  ${estado}`;
 
   // Asunto y mensaje por defecto (plantilla rápida)
   rellenarPlantilla();
@@ -688,28 +793,113 @@ function selTipo(btn) {
 }
 
 /* ── Plantillas rápidas sin IA ─────────────────────────────────── */
+function fmtFecha(iso) {
+  if (!iso) return '';
+  const p = iso.split(/[-/]/);
+  if (p.length !== 3) return iso;
+  // Soporta YYYY-MM-DD y DD/MM/YYYY
+  let d, m, y;
+  if (p[0].length === 4) { y=p[0]; m=p[1]; d=p[2].slice(0,2); }
+  else                   { d=p[0]; m=p[1]; y=p[2].slice(0,4); }
+  const meses = ['enero','febrero','marzo','abril','mayo','junio',
+                 'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  return `${parseInt(d)} de ${meses[parseInt(m)-1]} de ${y}`;
+}
+
 function rellenarPlantilla() {
   if (!_alumnoActual) return;
-  const a = _alumnoActual;
-  const finStr = a.fin ? ` (fecha límite: ${a.fin})` : '';
+  const a    = { ..._alumnoActual, nombre: toTitleCase(_alumnoActual.nombre) };
+  const fin  = a.fin ? fmtFecha(a.fin) : '';
+  const finStr = fin ? ` (fecha límite: ${fin})` : '';
 
-  const primerNombre = (n => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase())(a.nombre.trim().split(/\s+/)[0]);
+  // Datos de exámenes parseados
+  const exP    = (a.examenes || '0/0/0').split('/');
+  const exR    = parseInt(exP[0]) || 0;   // realizados
+  const exS    = parseInt(exP[1]) || 0;   // superados
+  const exT    = parseInt(exP[2]) || 0;   // totales
+  const exStr  = exT > 0
+    ? `${exR} de ${exT} exámenes realizados, ${exS} superados`
+    : (exR > 0 ? `${exR} exámenes realizados` : 'sin exámenes registrados');
+  const ini    = a.inicio ? fmtFecha(a.inicio) : '';
+  const periodoStr = ini && fin
+    ? `del ${ini} al ${fin}`
+    : (fin ? `hasta el ${fin}` : (ini ? `desde el ${ini}` : ''));
+
   const plantillas = {
     seguimiento: {
-      asunto: `Seguimiento de tu progreso — ${a.curso}`,
-      msg: `Hola ${primerNombre},\n\nMe pongo en contacto contigo para hacer un seguimiento de tu avance en el curso «${a.curso}».\n\nActualmente tienes un progreso del ${a.progreso}% y has realizado ${a.examenes} examen${a.examenes !== 1 ? 'es' : ''}${finStr}.\n\n${a.supera ? 'Vas por buen camino — sigue así.' : 'Nos gustaría apoyarte para que puedas alcanzar el objetivo del 75% de progreso.'}\n\nSi tienes alguna duda o necesitas ayuda, no dudes en escribirme.\n\nUn saludo,\nRicardo`
+      asunto: `Seguimiento de tu formación — ${a.curso}`,
+      msg: `Hola ${a.nombre},
+
+Me pongo en contacto contigo para hacerte un seguimiento personalizado de tu avance en el curso *${a.curso}*${periodoStr ? ` (${periodoStr})` : ''}.
+
+Tu situación actual:
+• Progreso general del curso: *${a.progreso}%*
+• Exámenes: ${exStr}
+
+${a.supera
+  ? `Vas por muy buen camino — estás superando el umbral del 75% y eso es un gran logro. Te animamos a mantener este ritmo hasta completar el curso.`
+  : `Para superar el curso es necesario alcanzar al menos el *75% de progreso*. Actualmente estás al ${a.progreso}%, por lo que te queda un pequeño esfuerzo para lograrlo.`
+}
+
+Si tienes alguna duda o necesitas ayuda, no dudes en escribirme. Estoy aquí para apoyarte.
+
+Un saludo,
+Ricardo`
     },
     felicitacion: {
-      asunto: `¡Enhorabuena por tu progreso! — ${a.curso}`,
-      msg: `Hola ${primerNombre},\n\n¡Quiero felicitarte por tu excelente desempeño en el curso «${a.curso}»!\n\nHas alcanzado un progreso del ${a.progreso}% y has completado ${a.examenes} examen${a.examenes !== 1 ? 'es' : ''}. Es un logro destacable que refleja tu dedicación y esfuerzo.\n\nTe animamos a continuar con este ritmo para completar el curso con éxito.\n\nUn saludo,\nRicardo`
+      asunto: `¡Enhorabuena, ${a.nombre}! 🎉`,
+      msg: `Hola ${a.nombre},
+
+¡Quería escribirte personalmente para felicitarte por tu excelente trabajo en el curso *${a.curso}*!
+
+🏆 *Tus resultados:*
+• Progreso alcanzado: *${a.progreso}%* ✅
+• Exámenes: ${exStr}
+${fin ? `• Plazo del curso: ${fin}` : ''}
+
+Este resultado refleja tu esfuerzo, constancia y dedicación. Es un logro del que puedes estar muy orgulloso/a.
+
+Te animamos a continuar con este nivel de compromiso hasta completar el curso al 100%.
+
+¡Sigue así! 💪
+
+Un saludo,
+Ricardo`
     },
     advertencia: {
-      asunto: `Aviso importante — Progreso en ${a.curso}`,
-      msg: `Hola ${primerNombre},\n\nMe pongo en contacto contigo porque he detectado que tu progreso en el curso «${a.curso}» se encuentra en el ${a.progreso}%${finStr}.\n\nPara poder superar el curso es necesario alcanzar al menos el 75% de progreso. Te pedimos que te pongas al día lo antes posible, ya que aún no entraste en el curso.\n\nSi estás teniendo dificultades, no dudes en contactarnos para que podamos orientarte.\n\nUn saludo,\nRicardo`
+      asunto: `Atención: progreso bajo en tu curso`,
+      msg: `Hola ${a.nombre},
+
+Me pongo en contacto contigo porque hemos detectado que tu progreso en el curso *${a.curso}* se encuentra en el *${a.progreso}%*${fin ? `, con fecha límite el *${fin}*` : ''}.
+
+📋 *Resumen de tu avance:*
+• Progreso actual: *${a.progreso}%* ⚠️
+• Exámenes: ${exStr}
+
+Para poder superar el curso es necesario alcanzar al menos el *75% de progreso*. El tiempo disponible se va reduciendo y es importante que te pongas al día cuanto antes.
+
+Si estás teniendo alguna dificultad — técnica, de tiempo o de contenido — no dudes en contactarnos. Estamos aquí para ayudarte a superarlo.
+
+Un saludo,
+Ricardo`
     },
     recordatorio: {
-      asunto: `Recordatorio: curso «${a.curso}» pendiente`,
-      msg: `Hola ${primerNombre},\n\nTe enviamos este recordatorio para informarte de que tienes el curso «${a.curso}» pendiente de completar.\n\nTu progreso actual es del ${a.progreso}%${a.fin ? ` y el plazo de finalización es el ${a.fin}` : ''}.\n\nTe invitamos a acceder a la plataforma y retomar el curso cuando puedas.\n\nQuedamos a tu disposición para cualquier consulta.\n\nUn saludo,\nRicardo`
+      asunto: `Recordatorio: tienes formación pendiente`,
+      msg: `Hola ${a.nombre},
+
+Te enviamos este recordatorio porque tienes el curso *${a.curso}* pendiente de completar.
+
+📌 *Estado actual:*
+• Progreso: *${a.progreso}%*
+• Exámenes: ${exStr}
+${periodoStr ? `• Periodo del curso: ${periodoStr}` : ''}
+
+Te invitamos a acceder a la plataforma y retomar el curso cuando puedas. Recuerda que el objetivo es alcanzar el *75% de progreso* para superarlo con éxito.
+
+Quedamos a tu disposición para cualquier consulta.
+
+Un saludo,
+Ricardo`
     },
     libre: {
       asunto: ``,
@@ -722,11 +912,120 @@ function rellenarPlantilla() {
   document.getElementById('input-mensaje').value = tmpl.msg;
 }
 
+/* ── Exportar Excel del curso seleccionado ─────────────────────── */
+function exportarCursoExcel() {
+  const sel   = document.getElementById('sel-curso');
+  const curso = sel ? sel.value : '';
+  const url   = '/formacion/exportar_curso_excel' + (curso ? '?curso=' + encodeURIComponent(curso) : '');
+  window.location.href = url;
+}
+
+/* ── Modal Alumno ──────────────────────────────────────────────────────────── */
+let _maAlumno = null;
+
+function abrirModalAlumno(a) {
+  _maAlumno = a;
+  const pct   = parseFloat(a.progreso) || 0;
+  const color = pct >= 75 ? 'var(--accent)' : (pct >= 50 ? 'var(--amber)' : 'var(--red)');
+
+  document.getElementById('ma-nombre').textContent   = toTitleCase(a.nombre);
+  document.getElementById('ma-curso').textContent    = a.curso || '—';
+  document.getElementById('ma-pct').textContent      = pct + '%';
+  document.getElementById('ma-pct').style.color      = color;
+  document.getElementById('ma-barra').style.width    = Math.min(pct, 100) + '%';
+  document.getElementById('ma-barra').style.background = color;
+  const exVal   = a.examenes || '0/0/0';
+  const exParts = exVal.split('/');
+  const exEl    = document.getElementById('ma-examenes');
+  const exBox   = document.getElementById('ma-examenes-box');
+  const exWarn  = document.getElementById('ma-examenes-warn');
+  exEl.textContent = exVal;
+  const exR = parseInt(exParts[0]) || 0;
+  const exT = parseInt(exParts[2]) || 0;
+  const exPct = exT > 0 ? (exR / exT * 100) : 100;
+  const exAlerta = exT > 0 && exPct < 75 && exPct !== 75;
+  if (exAlerta) {
+    exEl.style.color       = '#7C3AED';
+    exBox.style.background = 'rgba(124,58,237,.12)';
+    exBox.style.border     = '1.5px solid rgba(124,58,237,.35)';
+    exWarn.style.display   = 'inline';
+    exWarn.style.color     = '#7C3AED';
+  } else {
+    exEl.style.color       = '';
+    exBox.style.background = 'var(--bg3)';
+    exBox.style.border     = '1.5px solid transparent';
+    exWarn.style.display   = 'none';
+  }
+  document.getElementById('ma-inicio').textContent   = a.inicio || '—';
+  document.getElementById('ma-fin').textContent      = a.fin    || '—';
+
+  const estadoEl = document.getElementById('ma-estado');
+  if (a.supera) {
+    estadoEl.innerHTML = '<span style="color:var(--accent);">✔ Supera el 75% — aprobado</span>';
+  } else {
+    estadoEl.innerHTML = '<span style="color:var(--red);">✖ Por debajo del 75% — pendiente</span>';
+  }
+
+  const chk = document.getElementById('ma-nollamar-check');
+  chk.checked = (a.no_llamar === 1 || a.no_llamar === true);
+
+  const modal = document.getElementById('modal-alumno');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  cargarObservaciones(a.id);
+}
+
+function cerrarModalAlumno() {
+  document.getElementById('modal-alumno').style.display = 'none';
+  document.body.style.overflow = '';
+  _obsAlumnoId = null;
+  var ta = document.getElementById('ma-obs-input');
+  if (ta) ta.value = '';
+}
+
+async function toggleNoLlamar(checked) {
+  if (!_maAlumno) return;
+  const nuevo = !!checked;
+  _maAlumno.no_llamar = nuevo ? 1 : 0;
+
+  // Actualizar badge en la fila sin recargar
+  const badge = document.getElementById('badge-nollamar-' + _maAlumno.id);
+  if (badge) badge.style.display = nuevo ? 'inline-block' : 'none';
+
+  try {
+    await fetch('/formacion/alumno/no_llamar/' + _maAlumno.id, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ no_llamar: nuevo })
+    });
+  } catch(e) {
+    // Revertir si falla el servidor
+    const chk = document.getElementById('ma-nollamar-check');
+    chk.checked = !nuevo;
+    _maAlumno.no_llamar = nuevo ? 0 : 1;
+    if (badge) badge.style.display = nuevo ? 'none' : 'inline-block';
+    console.error('Error guardando no_llamar:', e);
+  }
+}
+
+function abrirMoodleDesdeModal() {
+  if (!_maAlumno) return;
+  cerrarModalAlumno();
+  abrirMoodle(_maAlumno);
+}
+
+// Cerrar modal con Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    cerrarModalAlumno();
+  }
+});
+
+
 /* ── Generar con IA (Claude API) ───────────────────────────────── */
 async function generarIA() {
   if (!_alumnoActual) return;
   const a = _alumnoActual;
-  const tipo = _tipoActual;
 
   const btn    = document.getElementById('btn-generar-ia');
   const status = document.getElementById('ia-status');
@@ -736,49 +1035,38 @@ async function generarIA() {
   status.style.display = 'flex';
   stTxt.textContent = 'Generando con IA…';
 
-  const primerNombreIA = (n => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase())(a.nombre.trim().split(/\s+/)[0]);
-  prompt = `Eres el tutor de formación de una empresa. Debes redactar un mensaje para enviar a un alumno a través de la plataforma Moodle.
-
-Datos del alumno:
-- Nombre completo: ${a.nombre}
-- Curso: ${a.curso}
-- Progreso actual: ${a.progreso}%
-- Exámenes realizados: ${a.examenes}
-- Estado: ${a.supera ? 'Supera el 75% (aprobado)' : 'Está por debajo del 75% (no aprobado aún)'}
-${a.inicio ? `- Fecha de inicio del curso: ${a.inicio}` : ''}
-${a.fin    ? `- Fecha de fin del curso: ${a.fin}`        : ''}
-
-Tipo de mensaje solicitado: ${tipo}
-
-Devuelve ÚNICAMENTE un JSON con este formato exacto (sin markdown, sin texto adicional):
-{"asunto":"...", "mensaje":"..."}
-
-El mensaje debe ser profesional, cordial y en español. Usa saltos de línea reales (\\n) para separar párrafos. Máximo 5 párrafos cortos.`;
-
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch('/formacion/ia/generar_mensaje_moodle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
+        nombre:   typeof toTitleCase === 'function' ? toTitleCase(a.nombre) : a.nombre,
+        curso:    a.curso,
+        progreso: a.progreso,
+        examenes: a.examenes,
+        supera:   a.supera,
+        inicio:   a.inicio || '',
+        fin:      a.fin    || '',
+        tipo:     _tipoActual
       })
     });
 
     const data = await resp.json();
-    const raw  = (data.content || []).map(b => b.text || '').join('');
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
 
-    document.getElementById('input-asunto').value  = parsed.asunto  || '';
-    document.getElementById('input-mensaje').value = parsed.mensaje || '';
+    if (data.error) {
+      stTxt.textContent = '✖ ' + data.error;
+      setTimeout(() => { status.style.display = 'none'; }, 4000);
+      return;
+    }
+
+    document.getElementById('input-asunto').value  = data.asunto  || '';
+    document.getElementById('input-mensaje').value = data.mensaje || '';
 
     stTxt.textContent = '✔ Mensaje generado';
     setTimeout(() => { status.style.display = 'none'; }, 2000);
 
   } catch (err) {
-    stTxt.textContent = '✖ Error al generar — comprueba la conexión';
+    stTxt.textContent = '✖ Error de conexión con el servidor';
     console.error(err);
   } finally {
     btn.disabled = false;
@@ -820,8 +1108,18 @@ document.addEventListener('keydown', e => {
 const btnBorrarCurso = document.getElementById('btn-borrar-curso');
 
 // Muestra u oculta el botón según si hay curso seleccionado
+// Listener único: muestra botón borrar Y aplica filtro
 document.getElementById('sel-curso').addEventListener('change', function () {
   btnBorrarCurso.style.display = this.value ? 'inline-flex' : 'none';
+  onFilter();
+  // Actualizar nombre del botón Excel
+  const btnEx = document.getElementById('btn-exportar-curso');
+  if (btnEx) {
+    const label = this.value ? this.options[this.selectedIndex].text : 'Todos';
+    const short = label.length > 16 ? label.slice(0, 15) + '…' : label;
+    btnEx.textContent = '📊 Excel — ' + short;
+    btnEx.title = this.value ? 'Exportar: ' + label : 'Exportar todos los cursos';
+  }
 });
 
 function borrarCursoSeleccionado() {
@@ -990,7 +1288,7 @@ function limpiarFiltros() {
 
 // ── Eventos ───────────────────────────────────────────────────
 inputBuscar.addEventListener('input',  onFilter);
-selCurso.addEventListener('change',   onFilter);
+// (listener de cambio ya registrado arriba junto al botón borrar)
 selEstado.addEventListener('change',  onFilter);
 selPerPage.addEventListener('change', onFilter);
 
@@ -1180,8 +1478,8 @@ function renderHistorial(data) {
     else
       deltaHtml = `<span class="htl-delta htl-delta-eq">sin cambio</span>`;
 
-    const examStr = item.examenes > 0
-      ? `<span style="font-size:.67rem; color:var(--text-muted);">· ${item.examenes} exam${item.examenes !== 1 ? 's' : '.'}</span>`
+    const examStr = (item.examenes && item.examenes !== "0/0/0")
+      ? `<span style="font-size:.67rem; color:var(--text-muted);">· ${item.examenes}</span>`
       : '';
 
     const label = isFirst
@@ -1227,132 +1525,6 @@ function renderHistorial(data) {
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════
-     MODAL FECHAS DEL CURSO
-══════════════════════════════════════════════════════════════════ -->
-<div id="modal-curso-fechas" style="
-  display:none; position:fixed; inset:0; z-index:9998;
-  background:rgba(0,0,0,.5); backdrop-filter:blur(4px);
-  align-items:center; justify-content:center; padding:1rem;"
-  onclick="if(event.target===this) this.style.display='none'">
-  <div style="background:var(--bg2); border:1px solid var(--border);
-    border-radius:14px; width:100%; max-width:420px;
-    box-shadow:0 20px 48px rgba(0,0,0,.45);">
-    <div style="padding:1rem 1.2rem .85rem; border-bottom:1px solid var(--border);
-                display:flex; align-items:center; gap:.6rem;">
-      <span style="font-size:1.1rem;">📅</span>
-      <div style="flex:1; min-width:0;">
-        <div style="font-weight:700; font-size:.95rem;" id="mcf-titulo"></div>
-        <div id="mcf-subtitulo" style="font-family:var(--mono); font-size:.7rem; color:var(--text-muted);"></div>
-      </div>
-      <button onclick="document.getElementById('modal-curso-fechas').style.display='none'"
-              style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;line-height:1;">✕</button>
-    </div>
-    <div style="padding:1.2rem;">
-      <div style="margin-bottom:1.2rem;">
-        <div style="display:flex; justify-content:space-between; font-size:.75rem;
-                    color:var(--text-muted); margin-bottom:.4rem;">
-          <span id="mcf-inicio-label">Inicio</span>
-          <span id="mcf-dias-label" style="font-family:var(--mono); font-weight:700;"></span>
-          <span id="mcf-fin-label">Fin</span>
-        </div>
-        <div style="height:8px; background:var(--bg3); border-radius:99px; overflow:hidden;">
-          <div id="mcf-progbar" style="height:100%; width:0%; border-radius:99px;
-               transition:width .5s ease; background:linear-gradient(90deg,var(--blue),var(--accent));"></div>
-        </div>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:.5rem; margin-bottom:.75rem;">
-        <div style="background:var(--bg3); border-radius:8px; padding:.6rem .5rem; text-align:center;">
-          <div style="font-family:var(--mono); font-size:1.1rem; font-weight:700; color:var(--blue);" id="mcf-dias-totales">—</div>
-          <div style="font-size:.65rem; color:var(--text-muted);">días totales</div>
-        </div>
-        <div style="background:var(--bg3); border-radius:8px; padding:.6rem .5rem; text-align:center;">
-          <div style="font-family:var(--mono); font-size:1.1rem; font-weight:700; color:var(--amber);" id="mcf-dias-trans">—</div>
-          <div style="font-size:.65rem; color:var(--text-muted);">transcurridos</div>
-        </div>
-        <div style="background:var(--bg3); border-radius:8px; padding:.6rem .5rem; text-align:center;">
-          <div id="mcf-dias-rest" style="font-family:var(--mono); font-size:1.1rem; font-weight:700; color:var(--accent);">—</div>
-          <div style="font-size:.65rem; color:var(--text-muted);">restantes</div>
-        </div>
-      </div>
-      <div style="display:flex; gap:.5rem;">
-        <div style="flex:1; background:rgba(63,185,80,.08); border:1px solid rgba(63,185,80,.25);
-                    border-radius:8px; padding:.6rem .8rem;">
-          <div style="font-size:.68rem; color:var(--accent); font-weight:700; margin-bottom:.2rem;">▶ INICIO</div>
-          <div id="mcf-fecha-inicio" style="font-family:var(--mono); font-size:.85rem; font-weight:700;">—</div>
-        </div>
-        <div style="flex:1; background:rgba(248,81,73,.08); border:1px solid rgba(248,81,73,.25);
-                    border-radius:8px; padding:.6rem .8rem;">
-          <div style="font-size:.68rem; color:var(--red); font-weight:700; margin-bottom:.2rem;">■ FIN</div>
-          <div id="mcf-fecha-fin" style="font-family:var(--mono); font-size:.85rem; font-weight:700;">—</div>
-        </div>
-      </div>
-      <div id="mcf-estado" style="margin-top:.75rem; padding:.5rem .8rem; border-radius:8px;
-           text-align:center; font-size:.8rem; font-weight:600;"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════
-     MODAL GESTIÓN DE ALUMNO
-══════════════════════════════════════════════════════════════════ -->
-<div id="modal-gestion" style="
-  display:none; position:fixed; inset:0; z-index:9999;
-  background:rgba(0,0,0,.5); backdrop-filter:blur(4px);
-  align-items:center; justify-content:center; padding:1rem;"
-  onclick="if(event.target===this) cerrarGestion()">
-  <div style="background:var(--bg2); border:1px solid var(--border);
-    border-radius:14px; width:100%; max-width:460px;
-    box-shadow:0 20px 48px rgba(0,0,0,.45);">
-    <div style="padding:1rem 1.2rem .85rem; border-bottom:1px solid var(--border);
-                display:flex; align-items:center; gap:.6rem;">
-      <span style="font-size:1.1rem;">📋</span>
-      <div style="flex:1;">
-        <div style="font-weight:700; font-size:.95rem;">Gestión del alumno</div>
-        <div id="mg-nombre" style="font-family:var(--mono); font-size:.72rem; color:var(--text-muted);"></div>
-      </div>
-      <button onclick="cerrarGestion()"
-              style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;line-height:1;">✕</button>
-    </div>
-    <div style="padding:1.2rem;">
-      <input type="hidden" id="mg-alumno-id" value="">
-      <div style="margin-bottom:1rem;">
-        <label style="font-size:.78rem; font-weight:600; color:var(--text-muted);
-                      display:block; margin-bottom:.5rem; text-transform:uppercase; letter-spacing:.05em;">
-          Tipo de contacto
-        </label>
-        <div style="display:flex; gap:.4rem; flex-wrap:wrap;" id="mg-estado-pills">
-          <button class="mg-pill" data-val="" onclick="selGestionPill(this)">⏳ Sin gestionar</button>
-          <button class="mg-pill" data-val="llamado"    onclick="selGestionPill(this)">📞 Llamado</button>
-          <button class="mg-pill" data-val="mensaje_wa" onclick="selGestionPill(this)">💬 Mensaje WA</button>
-          <button class="mg-pill" data-val="email"      onclick="selGestionPill(this)">✉ Email</button>
-          <button class="mg-pill" data-val="presencial" onclick="selGestionPill(this)">🤝 Presencial</button>
-        </div>
-      </div>
-      <div style="display:flex; align-items:center; gap:.6rem; margin-bottom:1rem;
-                  background:var(--bg3); border-radius:8px; padding:.65rem .85rem;">
-        <input type="checkbox" id="mg-gestionado" style="width:16px; height:16px; cursor:pointer;">
-        <label for="mg-gestionado" style="cursor:pointer; font-size:.85rem; font-weight:600;">
-          ✅ Marcar como <strong>completamente gestionado</strong>
-        </label>
-      </div>
-      <div style="margin-bottom:1.1rem;">
-        <label style="font-size:.78rem; font-weight:600; color:var(--text-muted);
-                      display:block; margin-bottom:.4rem; text-transform:uppercase; letter-spacing:.05em;">
-          Comentario / Nota interna
-        </label>
-        <textarea id="mg-comentario" rows="3" class="form-control"
-                  style="font-size:.83rem; resize:none;"
-                  placeholder="Ej: Llamé el lunes, no contestó. Reintento el miércoles…"></textarea>
-      </div>
-      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
-        <button type="button" onclick="cerrarGestion()" class="btn btn-g-ghost">Cancelar</button>
-        <button type="button" onclick="guardarGestion()" class="btn btn-g-primary">💾 Guardar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 // Delegar click en botones IA de la tabla
 document.addEventListener('click', function(e) {
@@ -1360,113 +1532,6 @@ document.addEventListener('click', function(e) {
   if (!btn) return;
   abrirAnalisisAlumno(btn.dataset.id, btn.dataset.nombre, btn.dataset.curso);
 });
-
-/* ══════════════════════════════════════════════════════════════
-   MODAL FECHAS DEL CURSO
-══════════════════════════════════════════════════════════════════ */
-function abrirModalCurso(nombre, fechaInicio, fechaFin) {
-  document.getElementById('mcf-titulo').textContent = nombre;
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  let diasTotales=null, diasTrans=null, diasRest=null, pct=0;
-  if (fechaInicio && fechaFin) {
-    const dIni=new Date(fechaInicio), dFin=new Date(fechaFin);
-    diasTotales = Math.round((dFin-dIni)/86400000);
-    diasTrans   = Math.round((hoy-dIni)/86400000);
-    diasRest    = Math.round((dFin-hoy)/86400000);
-    pct = diasTotales>0 ? Math.min(100,Math.max(0,Math.round(diasTrans/diasTotales*100))) : 0;
-  } else if (fechaFin) {
-    diasRest = Math.round((new Date(fechaFin)-hoy)/86400000);
-  }
-  document.getElementById('mcf-inicio-label').textContent = fechaInicio || '—';
-  document.getElementById('mcf-fin-label').textContent    = fechaFin    || '—';
-  document.getElementById('mcf-dias-label').textContent   = diasTotales!==null ? pct+'% del plazo' : '';
-  document.getElementById('mcf-progbar').style.width      = pct+'%';
-  const barColor = diasRest===null ? 'var(--blue)' : diasRest<0 ? 'var(--red)' : diasRest<=7 ? 'var(--amber)' : 'linear-gradient(90deg,var(--blue),var(--accent))';
-  document.getElementById('mcf-progbar').style.background = barColor;
-  document.getElementById('mcf-dias-totales').textContent = diasTotales!==null ? diasTotales : '—';
-  document.getElementById('mcf-dias-trans').textContent   = diasTrans!==null   ? diasTrans   : '—';
-  document.getElementById('mcf-dias-rest').textContent    = diasRest!==null    ? diasRest    : '—';
-  const restEl = document.getElementById('mcf-dias-rest');
-  restEl.style.color = diasRest===null ? 'var(--text-muted)' : diasRest<0 ? 'var(--red)' : diasRest<=7 ? 'var(--amber)' : 'var(--accent)';
-  const fmt = d => { if(!d) return '—'; const [y,m,dd]=d.split('-'); return `${dd}/${m}/${y}`; };
-  document.getElementById('mcf-fecha-inicio').textContent = fmt(fechaInicio);
-  document.getElementById('mcf-fecha-fin').textContent    = fmt(fechaFin);
-  document.getElementById('mcf-subtitulo').textContent    = fechaInicio&&fechaFin ? `${fmt(fechaInicio)} → ${fmt(fechaFin)}` : fechaFin ? `Fin: ${fmt(fechaFin)}` : 'Sin fechas registradas';
-  const estEl = document.getElementById('mcf-estado');
-  if (diasRest===null) { estEl.textContent='Sin fecha de fin registrada'; estEl.style.cssText='background:var(--bg3);color:var(--text-muted);margin-top:.75rem;padding:.5rem .8rem;border-radius:8px;text-align:center;font-size:.8rem;font-weight:600;'; }
-  else if (diasRest<0) { estEl.textContent=`🔴 Curso vencido hace ${Math.abs(diasRest)} día${Math.abs(diasRest)!==1?'s':''}`; estEl.style.cssText='background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.3);margin-top:.75rem;padding:.5rem .8rem;border-radius:8px;text-align:center;font-size:.8rem;font-weight:600;'; }
-  else if (diasRest===0) { estEl.textContent='🟡 El curso finaliza HOY'; estEl.style.cssText='background:rgba(210,153,34,.12);color:var(--amber);border:1px solid rgba(210,153,34,.3);margin-top:.75rem;padding:.5rem .8rem;border-radius:8px;text-align:center;font-size:.8rem;font-weight:600;'; }
-  else if (diasRest<=7) { estEl.textContent=`🟠 Quedan ${diasRest} día${diasRest!==1?'s':''} — cierre urgente`; estEl.style.cssText='background:rgba(210,153,34,.12);color:var(--amber);border:1px solid rgba(210,153,34,.3);margin-top:.75rem;padding:.5rem .8rem;border-radius:8px;text-align:center;font-size:.8rem;font-weight:600;'; }
-  else if (diasRest<=30) { estEl.textContent=`📅 Quedan ${diasRest} días para el cierre`; estEl.style.cssText='background:rgba(88,166,255,.1);color:var(--blue);border:1px solid rgba(88,166,255,.3);margin-top:.75rem;padding:.5rem .8rem;border-radius:8px;text-align:center;font-size:.8rem;font-weight:600;'; }
-  else { estEl.textContent=`✅ En plazo — ${diasRest} días restantes`; estEl.style.cssText='background:rgba(63,185,80,.1);color:var(--accent);border:1px solid rgba(63,185,80,.3);margin-top:.75rem;padding:.5rem .8rem;border-radius:8px;text-align:center;font-size:.8rem;font-weight:600;'; }
-  document.getElementById('modal-curso-fechas').style.display='flex';
-}
-
-/* ══════════════════════════════════════════════════════════════
-   MODAL GESTIÓN DE ALUMNO
-══════════════════════════════════════════════════════════════════ */
-let _gestionTipoActual = '';
-
-function abrirGestion(alumnoId, nombre, gestionado, tipoGestion, comentario) {
-  document.getElementById('mg-alumno-id').value    = alumnoId;
-  document.getElementById('mg-nombre').textContent = nombre;
-  document.getElementById('mg-gestionado').checked = !!gestionado;
-  document.getElementById('mg-comentario').value   = comentario || '';
-  _gestionTipoActual = tipoGestion || '';
-  document.querySelectorAll('.mg-pill').forEach(p => {
-    p.classList.toggle('mg-pill-active', p.dataset.val === _gestionTipoActual);
-  });
-  document.getElementById('modal-gestion').style.display = 'flex';
-  setTimeout(() => document.getElementById('mg-comentario').focus(), 80);
-}
-
-function cerrarGestion() {
-  document.getElementById('modal-gestion').style.display = 'none';
-}
-
-function selGestionPill(btn) {
-  _gestionTipoActual = btn.dataset.val;
-  document.querySelectorAll('.mg-pill').forEach(p => p.classList.remove('mg-pill-active'));
-  btn.classList.add('mg-pill-active');
-  if (_gestionTipoActual) document.getElementById('mg-gestionado').checked = true;
-}
-
-async function guardarGestion() {
-  const alumnoId   = document.getElementById('mg-alumno-id').value;
-  const gestionado = document.getElementById('mg-gestionado').checked ? 1 : 0;
-  const comentario = document.getElementById('mg-comentario').value.trim();
-  try {
-    const res  = await fetch(`/formacion/alumno_gestion/${alumnoId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gestionado, tipo_gestion: _gestionTipoActual, comentario })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      // Actualizar botón en tabla sin recargar
-      const btn = document.querySelector(`td[onclick*="abrirGestion(${alumnoId},"]`) ||
-                  document.querySelector(`td[onclick*="abrirGestion(${alumnoId} ,"]`);
-      if (btn) {
-        const label = gestionado ? `✅ ${_gestionTipoActual||'Gestionado'}` :
-                      _gestionTipoActual ? `🔄 ${_gestionTipoActual}` : '⏳ Gestionar';
-        btn.textContent = label;
-        // btn styling handled via nombre td indicator
-        const td = btn.closest('td');
-        if (td) {
-          let comDiv = td.querySelector('.gestion-com');
-          if (!comDiv && comentario) {
-            comDiv = document.createElement('div');
-            comDiv.className = 'gestion-com';
-            comDiv.style.cssText = 'font-size:.65rem;color:var(--text-muted);margin-top:.15rem;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            btn.after(comDiv);
-          }
-          if (comDiv) comDiv.textContent = comentario ? `💬 ${comentario}` : '';
-        }
-      }
-      cerrarGestion();
-    }
-  } catch(e) { console.error('Error guardando gestión:', e); }
-}
 
 function abrirAnalisisAlumno(id, nombre, curso) {
   document.getElementById('modal-ia-titulo').textContent    = nombre;
@@ -1509,7 +1574,7 @@ function renderAnalisisIA(d) {
     '<div style="background:' + rb + ';border-radius:10px;padding:.75rem 1rem;margin-bottom:1rem;display:flex;gap:.75rem;align-items:center;">' +
       '<span style="font-size:1.8rem;">' + d.riesgo_emoji + '</span>' +
       '<div><div style="font-weight:700;color:' + rc + ';">Riesgo ' + (d.riesgo||'').toUpperCase() + '</div>' +
-      '<div style="font-size:.75rem;color:var(--text-muted);">Progreso: ' + (d.alumno&&d.alumno.progreso?d.alumno.progreso.toFixed(1):0) + '% · Exámenes: ' + (d.alumno&&d.alumno.examenes||0) + ' · ' + dias + '</div></div></div>' +
+      '<div style="font-size:.75rem;color:var(--text-muted);">Progreso: ' + (d.alumno&&d.alumno.progreso?d.alumno.progreso.toFixed(1):0) + '% · Exámenes: ' + (d.alumno&&d.alumno.examenes||"0/0/0") + ' · ' + dias + '</div></div></div>' +
     '<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">DIAGNÓSTICO</div>' +
     '<p style="font-size:.84rem;line-height:1.6;margin-bottom:1rem;">' + d.diagnostico + '</p>' +
     '<div style="font-size:.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem;">ACCIONES RECOMENDADAS</div>' +
@@ -1545,83 +1610,164 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') cerrarModalIA();
 });
 
-/* ══════════════════════════════════════════════════════
-   VISTA DE TARJETAS EN MÓVIL
-══════════════════════════════════════════════════════ */
-function buildMobileCards() {
-  var container = document.getElementById('cards-mobile');
-  if (!container) return;
-  container.innerHTML = '';
+// ════════════════════════════════════════════════════════════════
+//  Modal detalles de curso
+// ════════════════════════════════════════════════════════════════
+function abrirModalCurso(el) {
+  const curso    = el.dataset.curso    || '—';
+  const finicio  = el.dataset.finicio  || '';
+  const ffin     = el.dataset.ffin     || '';
+  const progreso = parseFloat(el.dataset.progreso) || 0;
 
-  var rows = document.querySelectorAll('#tbody-alumnos tr[data-search]');
-  if (!rows.length) {
-    container.innerHTML = '<div style="text-align:center;padding:2.5rem;color:var(--text-muted);"><div style="font-size:1.8rem;margin-bottom:.5rem;">🔍</div>Ningún alumno coincide con los filtros aplicados.</div>';
-    return;
+  document.getElementById('mc-nombre').textContent  = curso;
+  document.getElementById('mc-finicio').textContent = finicio || '—';
+  document.getElementById('mc-ffin').textContent    = ffin    || '—';
+
+  let diasTotal = '—', diasTrans = '—', pctTiempo = null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+
+  function parseDate(s) {
+    if (!s) return null;
+    if (s.includes('-')) return new Date(s + 'T00:00:00');
+    const [d,m,y] = s.split('/');
+    return new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T00:00:00`);
   }
 
-  rows.forEach(function(tr) {
-    if (tr.style.display === 'none') return;
+  const dIni = parseDate(finicio);
+  const dFin = parseDate(ffin);
 
-    var card = document.createElement('div');
-    card.style.cssText = 'background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden;';
+  if (dIni && dFin && dFin > dIni) {
+    const ms = 86400000;
+    diasTotal = Math.round((dFin - dIni) / ms);
+    const trans = Math.round((hoy - dIni) / ms);
+    diasTrans = trans < 0 ? 'Aún no empezó' : trans > diasTotal ? diasTotal : trans;
+    if (typeof diasTrans === 'number') {
+      pctTiempo = Math.min(100, Math.round((diasTrans / diasTotal) * 100));
+    }
+  }
 
-    var cells = tr.querySelectorAll('td[data-label]');
-    var html  = '';
+  document.getElementById('mc-dias-total').textContent = typeof diasTotal === 'number' ? diasTotal + ' días' : diasTotal;
+  document.getElementById('mc-dias-trans').textContent = typeof diasTrans === 'number' ? diasTrans + ' días' : diasTrans;
 
-    cells.forEach(function(td) {
-      var label   = td.getAttribute('data-label');
-      var isLast  = label === 'Acciones';
-      html += '<div style="display:flex;align-items:flex-start;gap:.5rem;padding:.35rem .75rem;' +
-              (isLast ? '' : 'border-bottom:1px solid var(--border);') + '">' +
-              '<span style="flex-shrink:0;width:78px;font-size:.65rem;font-weight:700;color:var(--text-muted);' +
-              'text-transform:uppercase;letter-spacing:.04em;font-family:var(--mono,monospace);padding-top:.15rem;">' +
-              label + '</span>' +
-              '<div style="flex:1;min-width:0;font-size:.82rem;">' + td.innerHTML + '</div>' +
-              '</div>';
-    });
+  const pctT = pctTiempo !== null ? pctTiempo : 0;
+  document.getElementById('mc-pct-tiempo').textContent = pctTiempo !== null ? pctT + '%' : '—';
+  const barT = document.getElementById('mc-bar-tiempo');
+  barT.style.width = pctT + '%';
+  barT.style.background = pctT >= 90 ? 'var(--red)' : pctT >= 60 ? 'var(--amber)' : 'var(--blue)';
 
-    card.innerHTML = html;
-    container.appendChild(card);
-  });
+  document.getElementById('mc-pct-alumno').textContent = progreso + '%';
+  const barA = document.getElementById('mc-bar-alumno');
+  barA.style.width = Math.min(100, progreso) + '%';
+  barA.style.background = progreso >= 75 ? 'var(--accent)' : progreso >= 50 ? 'var(--amber)' : 'var(--red)';
 
-  /* Forzar botones de acciones en fila */
-  container.querySelectorAll('.acciones-div').forEach(function(d) {
-    d.style.cssText += 'display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;justify-content:flex-start!important;gap:.35rem!important;';
-  });
+  const nota = document.getElementById('mc-nota');
+  if (pctTiempo !== null) {
+    const diff = progreso - pctT;
+    if (diff >= 10) {
+      nota.style.display = 'block';
+      nota.style.background = 'rgba(40,167,80,.12)';
+      nota.style.color = 'var(--accent)';
+      nota.textContent = '✅ El alumno va por delante del ritmo esperado.';
+    } else if (diff < -20) {
+      nota.style.display = 'block';
+      nota.style.background = 'rgba(220,53,69,.12)';
+      nota.style.color = 'var(--red)';
+      nota.textContent = '⚠️ El alumno va por detrás del ritmo esperado.';
+    } else {
+      nota.style.display = 'block';
+      nota.style.background = 'rgba(255,193,7,.10)';
+      nota.style.color = 'var(--amber)';
+      nota.textContent = '📊 El alumno va al ritmo del curso.';
+    }
+  } else {
+    nota.style.display = 'none';
+  }
+
+  const modal = document.getElementById('modal-curso');
+  modal.style.display = 'flex';
 }
 
-function refreshMobileCards() {
-  if (window.innerWidth <= 767) buildMobileCards();
+function cerrarModalCurso() {
+  document.getElementById('modal-curso').style.display = 'none';
 }
 
-/* Reconstruir tarjetas cuando cambian los filtros */
-var _origClientFilter = typeof clientFilter === 'function' ? clientFilter : null;
-function clientFilter() {
-  if (_origClientFilter) _origClientFilter();
-  refreshMobileCards();
-}
-
-/* Reconstruir tarjetas cuando cambia la paginación */
-var _origGoToPage = typeof goToPage === 'function' ? goToPage : null;
-function goToPage(p) {
-  if (_origGoToPage) _origGoToPage(p);
-  setTimeout(refreshMobileCards, 50);
-}
-
-window.addEventListener('resize', refreshMobileCards);
-document.addEventListener('DOMContentLoaded', function() {
-  refreshMobileCards();
-  /* Reconstruir cuando se recalculen las filas visibles */
-  var obs = new MutationObserver(function(mutations) {
-    var relevant = mutations.some(function(m) {
-      return m.target.id === 'tbody-alumnos' ||
-             (m.target.closest && m.target.closest('#tbody-alumnos'));
-    });
-    if (relevant) setTimeout(refreshMobileCards, 30);
-  });
-  var tbody = document.getElementById('tbody-alumnos');
-  if (tbody) obs.observe(tbody, { attributes: true, subtree: true, attributeFilter: ['style'] });
+document.getElementById('modal-curso').addEventListener('click', function(e) {
+  if (e.target === this) cerrarModalCurso();
 });
 
-</script>-e 
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    cerrarModalCurso();
+  }
+});
+
+
+/* ═══ OBSERVACIONES DE ALUMNO ═══ */
+var _obsAlumnoId = null;
+
+function _escHtml(t) {
+  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function _crearObsEl(obs) {
+  var div = document.createElement('div');
+  div.dataset.obsId = obs.id;
+  div.style.cssText = 'background:var(--bg2);border-radius:7px;padding:.55rem .7rem;border:1px solid var(--border);display:flex;gap:.5rem;align-items:flex-start;';
+  div.innerHTML =
+    '<div style="flex:1;"><div style="font-size:.82rem;line-height:1.45;white-space:pre-wrap;word-break:break-word;">' + _escHtml(obs.texto) + '</div>' +
+    '<div style="font-size:.68rem;color:var(--text-muted);margin-top:.25rem;font-family:var(--mono);">' + (obs.fecha||'') + '</div></div>' +
+    '<button onclick="borrarObservacion(' + obs.id + ',this)" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:.85rem;padding:.1rem .3rem;border-radius:4px;flex-shrink:0;line-height:1;" onmouseover="this.style.color=\'var(--red)\'" onmouseout="this.style.color=\'var(--text-muted)\'">✕</button>';
+  return div;
+}
+async function cargarObservaciones(alumno_id) {
+  _obsAlumnoId = alumno_id;
+  var lista = document.getElementById('ma-obs-lista');
+  var count = document.getElementById('ma-obs-count');
+  lista.innerHTML = '<div style="font-size:.8rem;color:var(--text-muted);text-align:center;padding:.5rem 0;">Cargando…</div>';
+  try {
+    var resp = await fetch('/formacion/alumno/observaciones/' + alumno_id);
+    var data = await resp.json();
+    lista.innerHTML = '';
+    if (!data.length) {
+      lista.innerHTML = '<div id="ma-obs-empty" style="font-size:.8rem;color:var(--text-muted);text-align:center;padding:.5rem 0;">Sin observaciones aún</div>';
+      count.textContent = '';
+    } else {
+      count.textContent = data.length + (data.length===1?' nota':' notas');
+      data.forEach(function(obs){ lista.appendChild(_crearObsEl(obs)); });
+    }
+  } catch(e) { lista.innerHTML = '<div style="color:var(--red);font-size:.8rem;">Error al cargar</div>'; }
+}
+async function guardarObservacion() {
+  if (!_obsAlumnoId) return;
+  var ta = document.getElementById('ma-obs-input');
+  var texto = ta.value.trim();
+  if (!texto) return;
+  try {
+    var resp = await fetch('/formacion/alumno/observaciones/' + _obsAlumnoId, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({texto:texto})
+    });
+    var obs = await resp.json();
+    if (obs.error) return;
+    ta.value = '';
+    var lista = document.getElementById('ma-obs-lista');
+    var empty = document.getElementById('ma-obs-empty');
+    if (empty) empty.remove();
+    lista.insertBefore(_crearObsEl(obs), lista.firstChild);
+    var n = lista.querySelectorAll('[data-obs-id]').length;
+    document.getElementById('ma-obs-count').textContent = n + (n===1?' nota':' notas');
+  } catch(e) {}
+}
+async function borrarObservacion(obs_id, btnEl) {
+  if (!confirm('¿Eliminar esta observación?')) return;
+  try {
+    await fetch('/formacion/alumno/observaciones/borrar/' + obs_id, {method:'POST'});
+    var fila = btnEl.closest('[data-obs-id]');
+    if (fila) fila.remove();
+    var lista = document.getElementById('ma-obs-lista');
+    var n = lista.querySelectorAll('[data-obs-id]').length;
+    document.getElementById('ma-obs-count').textContent = n ? n+(n===1?' nota':' notas') : '';
+    if (!n) lista.innerHTML = '<div id="ma-obs-empty" style="font-size:.8rem;color:var(--text-muted);text-align:center;padding:.5rem 0;">Sin observaciones aún</div>';
+  } catch(e) {}
+}
+</script>
+
 {% endblock %}

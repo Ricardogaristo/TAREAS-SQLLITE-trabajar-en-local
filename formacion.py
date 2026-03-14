@@ -44,7 +44,7 @@ def inicializar_formacion():
             curso           TEXT,
             nombre          TEXT NOT NULL,
             progreso        DOUBLE DEFAULT 0,
-            examenes        INT DEFAULT 0,
+            examenes        VARCHAR(20) DEFAULT '0/0/0',
             fecha_inicio    VARCHAR(30),
             fecha_fin       VARCHAR(30),
             supera_75       INT DEFAULT 0,
@@ -117,10 +117,39 @@ def inicializar_formacion():
         ("tipo_gestion",       "VARCHAR(50)"),
         ("comentario",         "TEXT"),
         ("fecha_gestion",      "VARCHAR(30)"),
+        ("no_llamar",          "TINYINT(1) DEFAULT 0"),
     ]:
         if not column_exists(cursor, 'alumnos', col):
             cursor.execute(f"ALTER TABLE alumnos ADD COLUMN {col} {ddl}")
 
+    # Migrar examenes de INT a VARCHAR(20) si todavía es tipo numérico
+    try:
+        cursor.execute("ALTER TABLE alumnos MODIFY COLUMN examenes VARCHAR(20) DEFAULT '0/0/0'")
+        cursor.execute("ALTER TABLE progreso_historial MODIFY COLUMN examenes VARCHAR(20) DEFAULT '0/0/0'")
+    except Exception:
+        pass  # Ya es VARCHAR o BD no soporta MODIFY
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS observaciones_alumno (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            alumno_id   INT NOT NULL,
+            tutor_id    INT NOT NULL,
+            texto       TEXT NOT NULL,
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (alumno_id) REFERENCES alumnos(id) ON DELETE CASCADE
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS observaciones_alumno (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            alumno_id   INT NOT NULL,
+            tutor_id    INT NOT NULL,
+            texto       TEXT NOT NULL,
+            created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (alumno_id) REFERENCES alumnos(id) ON DELETE CASCADE
+        )
+    """)
     conn.commit()
     conn.close()
     print("✅ MySQL formacion inicializada correctamente.")
@@ -152,6 +181,33 @@ def _safe_int(val):
         return int(float(str(val).strip()))
     except (ValueError, TypeError):
         return 0
+
+def _fmt_examenes(val):
+    """Garantiza que el valor de examenes esté en formato R/S/T.
+    Acepta int (legacy) o string 'R/S/T'."""
+    if val is None:
+        return "0/0/0"
+    s = str(val).strip()
+    if "/" in s:
+        parts = s.split("/")
+        if len(parts) == 3:
+            return s
+    # Legacy: era un entero
+    try:
+        n = int(float(s))
+        return f"{n}/0/0"
+    except Exception:
+        return "0/0/0"
+
+def _parse_examenes(val):
+    """Devuelve (realizados, superados, totales) como ints."""
+    fmt = _fmt_examenes(val)
+    parts = fmt.split("/")
+    try:
+        return int(parts[0]), int(parts[1]), int(parts[2])
+    except Exception:
+        return 0, 0, 0
+
 
 def _safe_date(val):
     """Devuelve la fecha como string 'YYYY-MM-DD' o None."""
@@ -607,7 +663,7 @@ def formacion():
                     if not nombre or nombre.lower() in ("none","nan",""): continue
 
                     progreso = _safe_float(row[i2_p])  if i2_p  is not None and i2_p  < len(row) else 0.0
-                    examenes = _safe_int(row[i2_e])    if i2_e  is not None and i2_e  < len(row) else 0
+                    examenes = _fmt_examenes(row[i2_e] if i2_e is not None and i2_e < len(row) else None)
                     f_inicio = _safe_date(row[i2_fi])  if i2_fi is not None and i2_fi < len(row) else None
                     f_fin    = _safe_date(row[i2_ff])  if i2_ff is not None and i2_ff < len(row) else None
                     curso    = str(row[i2_c]).strip()  if i2_c  is not None and i2_c  < len(row) and row[i2_c] else None
@@ -681,10 +737,17 @@ def formacion():
 
     # Cargar alumnos activos del tutor actual (excluye archivados)
     conn = get_form_conn()
-    alumnos = conn.execute(
+    _alumnos_raw = conn.execute(
         "SELECT * FROM alumnos WHERE tutor_id=? AND (archivado IS NULL OR archivado=0) ORDER BY progreso DESC, nombre ASC",
         (tutor_id,)
     ).fetchall()
+    alumnos = []
+    for _a in _alumnos_raw:
+        _a = dict(_a)
+        _a["examenes"]   = _fmt_examenes(_a.get("examenes"))
+        _ep              = _parse_examenes(_a["examenes"])
+        _a["ex_pending"] = _ep[2] > 0 and (_ep[0] / _ep[2]) < 0.75 and not _a.get("no_llamar")
+        alumnos.append(_a)
     # Contar cursos archivados para el badge
     row_arch = conn.execute(
         "SELECT COUNT(DISTINCT curso) as n FROM alumnos WHERE tutor_id=? AND archivado=1",
@@ -756,13 +819,31 @@ def borrar_curso():
     conn.close()
     return redirect(url_for("formacion.formacion"))
 
+# ── Ruta: toggle no_llamar (AJAX) ─────────────────────────────────────────────
+@formacion_bp.route("/formacion/alumno/no_llamar/<int:alumno_id>", methods=["POST"])
+@login_required
+def toggle_no_llamar(alumno_id):
+    datos = request.get_json(silent=True) or {}
+    valor = 1 if datos.get("no_llamar") else 0
+    conn  = get_form_conn()
+    conn.execute(
+        "UPDATE alumnos SET no_llamar=? WHERE id=? AND (tutor_id=? OR tutor_id IS NULL)",
+        (valor, alumno_id, session["user_id"])
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "no_llamar": bool(valor)})
+
+
 # ── Ruta: editar alumno (teléfono) ─────────────────────────────────────────────
 @formacion_bp.route("/formacion/editar/<int:alumno_id>", methods=["POST"])
 @login_required
 def editar_alumno(alumno_id):
     telefono = request.form.get("telefono", "").strip()
     conn = get_form_conn()
-    conn.execute("UPDATE alumnos SET telefono=? WHERE id=? AND tutor_id=?",
+    # Permite editar si el alumno pertenece al tutor O si tutor_id es NULL (migrado)
+    conn.execute("""UPDATE alumnos SET telefono=?
+                    WHERE id=? AND (tutor_id=? OR tutor_id IS NULL)""",
                  (telefono, alumno_id, session["user_id"]))
     conn.commit()
     conn.close()
@@ -855,7 +936,9 @@ def formacion_archivados():
     # Normalizar
     for a in alumnos_arch:
         a["progreso"]  = float(a.get("progreso") or 0)
-        a["examenes"]  = int(a.get("examenes") or 0)
+        a["examenes"]  = _fmt_examenes(a.get("examenes"))
+        _ep = _parse_examenes(a["examenes"])
+        a["ex_pending"] = _ep[2] > 0 and (_ep[0] / _ep[2]) < 0.75  # ratio realizados/totales < 75%
         a["supera_75"] = int(a.get("supera_75") or 0)
         a["curso"]     = a.get("curso") or "Sin curso"
 
@@ -918,14 +1001,16 @@ def formacion_archivados():
                               key=lambda kv: _fecha_archivo_grupo(kv[1]),
                               reverse=True)
 
-    # Calcular estadísticas por grupo
+    # Calcular estadísticas por grupo (excluye alumnos con no_llamar=1)
     grupos = []
     for curso_nombre, lista in grupos_ordenados:
         total     = len(lista)
-        superan   = sum(1 for a in lista if a["supera_75"] == 1)
-        pct       = round(superan / total * 100, 1) if total else 0
-        avg_prog  = round(sum(a["progreso"] for a in lista) / total, 1) if total else 0
-        examenes  = sum(a["examenes"] for a in lista)
+        contables = [a for a in lista if not a.get("no_llamar")]   # excluir no_llamar
+        n_cont    = len(contables)
+        superan   = sum(1 for a in contables if a["supera_75"] == 1)
+        pct       = round(superan / n_cont * 100, 1) if n_cont else 0
+        avg_prog  = round(sum(a["progreso"] for a in contables) / n_cont, 1) if n_cont else 0
+        examenes  = sum(_parse_examenes(a["examenes"])[0] for a in lista)  # suma de realizados
         fecha_arch = (lista[0].get("archivado_at") or "")[:10]
         fecha_ini  = min((a.get("fecha_inicio") or "9999" for a in lista if a.get("fecha_inicio")), default="—")
         fecha_fin  = max((a.get("fecha_fin")    or "0000" for a in lista if a.get("fecha_fin")),    default="—")
@@ -933,10 +1018,11 @@ def formacion_archivados():
             "curso"      : curso_nombre,
             "alumnos"    : lista,
             "total"      : total,
+            "total_contable": n_cont,
             "superan"    : superan,
             "pct_exito"  : pct,
             "avg_progreso": avg_prog,
-            "total_examenes": examenes,
+            "total_examenes": examenes,  # realizados totales del grupo
             "fecha_archivo": fecha_arch,
             "fecha_inicio" : fecha_ini if fecha_ini != "9999" else "—",
             "fecha_fin"    : fecha_fin if fecha_fin != "0000" else "—",
@@ -1016,6 +1102,44 @@ def formacion_alarmas():
     from datetime import date as _d
     hoy_str = _d.today().strftime("%A %d de %B de %Y")
 
+    # ── Resumen de cursos para los KPI cards ──────────────────────
+    conn2 = get_form_conn()
+    alumnos_cursos = [dict(a) for a in conn2.execute(
+        "SELECT curso, progreso, supera_75, fecha_inicio, fecha_fin, no_llamar FROM alumnos "
+        "WHERE tutor_id=? AND (archivado IS NULL OR archivado=0)",
+        (tutor_id,)
+    ).fetchall()]
+    conn2.close()
+
+    from collections import defaultdict
+    _cur = defaultdict(lambda: {"total":0,"superan":0,"prog":0,"f_ini":None,"f_fin":None})
+    for a in alumnos_cursos:
+        if a.get("no_llamar"): continue
+        k = a["curso"] or "Sin curso"
+        _cur[k]["total"]  += 1
+        _cur[k]["superan"] += int(a.get("supera_75") or 0)
+        _cur[k]["prog"]   += float(a.get("progreso") or 0)
+        if a.get("fecha_inicio") and not _cur[k]["f_ini"]:
+            _cur[k]["f_ini"] = a["fecha_inicio"]
+        if a.get("fecha_fin") and not _cur[k]["f_fin"]:
+            _cur[k]["f_fin"] = a["fecha_fin"]
+
+    cursos_resumen = []
+    for nombre_c, d in sorted(_cur.items()):
+        n = d["total"]
+        avg = round(d["prog"] / n, 1) if n else 0
+        sup = d["superan"]
+        pct_exito = round(sup / n * 100, 1) if n else 0
+        cursos_resumen.append({
+            "nombre":    nombre_c,
+            "total":     n,
+            "superan":   sup,
+            "pct_exito": pct_exito,
+            "avg_prog":  avg,
+            "f_ini":     (d["f_ini"] or "")[:10],
+            "f_fin":     (d["f_fin"] or "")[:10],
+        })
+
     return render_template(
         "formacion_alarmas.html",
         alarmas=alarmas,
@@ -1023,6 +1147,7 @@ def formacion_alarmas():
         pendientes=pendientes,
         hechas=hechas,
         hoy_str=hoy_str,
+        cursos_resumen=cursos_resumen,
     )
 
 
@@ -1082,18 +1207,34 @@ def formacion_calendar_data():
     # Deduplicar: una entrada por (tipo, fecha, curso) — no una por alumno
     vistos  = set()
     eventos = []
+    cursos_sin_fecha = set()  # cursos que existen pero sin fechas asignadas
+
     for a in alumnos:
         curso = a.get("curso") or "Sin curso"
+        tiene_fecha = False
         if a.get("fecha_inicio"):
             key = ("inicio", str(a["fecha_inicio"])[:10], curso)
             if key not in vistos:
                 vistos.add(key)
                 eventos.append({"tipo": "inicio", "fecha": key[1], "curso": curso})
+            tiene_fecha = True
         if a.get("fecha_fin"):
             key = ("fin", str(a["fecha_fin"])[:10], curso)
             if key not in vistos:
                 vistos.add(key)
                 eventos.append({"tipo": "fin", "fecha": key[1], "curso": curso})
+            tiene_fecha = True
+        if not tiene_fecha:
+            cursos_sin_fecha.add(curso)
+
+    # Cursos sin fechas: añadir como evento tipo "sin_fecha" con fecha de hoy
+    # para que aparezcan en el Gantt y calendario aunque no tengan fechas asignadas
+    from datetime import date as _date
+    hoy_str = _date.today().isoformat()
+    cursos_con_evento = {e["curso"] for e in eventos}
+    for curso in cursos_sin_fecha:
+        if curso not in cursos_con_evento:
+            eventos.append({"tipo": "sin_fecha", "fecha": hoy_str, "curso": curso})
 
     # Notas del calendario
     conn2 = get_form_conn()
@@ -1203,7 +1344,9 @@ def formacion_dashboard():
     # Normalizar campos que pueden ser None
     for a in alumnos:
         a["progreso"]  = float(a.get("progreso") or 0)
-        a["examenes"]  = int(a.get("examenes") or 0)
+        a["examenes"]  = _fmt_examenes(a.get("examenes"))
+        _ep = _parse_examenes(a["examenes"])
+        a["ex_pending"] = _ep[2] > 0 and (_ep[0] / _ep[2]) < 0.75  # ratio realizados/totales < 75%
         a["supera_75"] = int(a.get("supera_75") or 0)
         a["curso"]     = a.get("curso") or ""
 
@@ -1215,7 +1358,7 @@ def formacion_dashboard():
     no_superan     = total - superan_75
     pct_exito      = round(superan_75 / total * 100, 1) if total else 0
     avg_progreso   = round(sum(a["progreso"] for a in alumnos) / total, 1) if total else 0
-    total_examenes = sum(a["examenes"] for a in alumnos)
+    total_examenes = sum(_parse_examenes(a["examenes"])[0] for a in alumnos)
 
     # Snapshots históricos (también como dicts)
     conn2     = get_form_conn()
@@ -1301,20 +1444,73 @@ def whatsapp_alumno(alumno_id):
     if not telefono:
         return redirect(url_for("formacion.formacion"))
 
-    nombre   = alumno["nombre"]
-    progreso = alumno["progreso"]
-    inicio   = alumno["fecha_inicio"] or "—"
-    fin      = alumno["fecha_fin"]    or "—"
+    # Formatear nombre: solo nombre y apellido en title case
+    partes = alumno["nombre"].strip().split()
+    nombre_corto = " ".join(p.capitalize() for p in partes[:2]) if len(partes) >= 2 else partes[0].capitalize() if partes else alumno["nombre"]
 
-    mensaje = (
-        f"Hola {nombre} 👋\n"
-        f"Te comparto tu resumen de progreso en el curso:\n\n"
-        f"📅 Fecha de inicio: {inicio}\n"
-        f"📅 Fecha de fin: {fin}\n"
-        f"📊 Progreso actual: {progreso}%\n\n"
-        f"{'🎉 ¡Superaste el 75% requerido! Excelente trabajo.' if progreso >= 75 else '⚡ Sigue adelante, ¡puedes lograrlo!'}\n\n"
-        f"Cualquier consulta, aquí estoy. ¡Éxitos!"
-    )
+    progreso = float(alumno["progreso"] or 0)
+    curso    = alumno["curso"] or ""
+
+    # Formatear fechas como "día de mes de año"
+    meses = ["enero","febrero","marzo","abril","mayo","junio",
+             "julio","agosto","septiembre","octubre","noviembre","diciembre"]
+    def fmt_fecha_wa(val):
+        if not val: return None
+        try:
+            from datetime import datetime as _dt
+            d = _dt.strptime(str(val)[:10], "%Y-%m-%d")
+            return f"{d.day} de {meses[d.month-1]} de {d.year}"
+        except Exception:
+            return str(val)
+
+    inicio_fmt = fmt_fecha_wa(alumno["fecha_inicio"])
+    fin_fmt    = fmt_fecha_wa(alumno["fecha_fin"])
+
+    # Exámenes R/S/T
+    ex_raw  = _fmt_examenes(alumno.get("examenes"))
+    ex_p    = _parse_examenes(ex_raw)
+    ex_r, ex_s, ex_t = ex_p
+
+    supera = progreso >= 75
+
+    if supera:
+        intro    = f"Quería escribirte para compartirte los resultados de tu formación y felicitarte por tu esfuerzo."
+        cierre   = f"Estás haciendo un trabajo excelente. ¡Sigue así hasta completarlo al 100%! 💪"
+    else:
+        intro    = f"Me pongo en contacto contigo para hacerte un seguimiento de tu avance en el curso."
+        cierre   = f"Recuerda que el objetivo es alcanzar el 75% de progreso. Si necesitas ayuda, aquí estoy. ¡Tú puedes! 🙌"
+
+    periodo = ""
+    if inicio_fmt and fin_fmt:
+        periodo = f"📆 Periodo: del {inicio_fmt} al {fin_fmt}"
+    elif fin_fmt:
+        periodo = f"📆 Fecha límite: {fin_fmt}"
+    elif inicio_fmt:
+        periodo = f"📆 Inicio: {inicio_fmt}"
+
+    ex_linea = ""
+    if ex_t > 0:
+        ex_linea = f"📝 Exámenes: {ex_r} realizados · {ex_s} superados · {ex_t} totales"
+    elif ex_r > 0:
+        ex_linea = f"📝 Exámenes realizados: {ex_r}"
+
+    lineas = [
+        f"Hola {nombre_corto},",
+        "",
+        intro,
+        "",
+        f"📚 Curso: {curso}" if curso else None,
+        periodo if periodo else None,
+        f"📊 Progreso actual: *{progreso:.0f}%* {'✅' if supera else '⚠️'}",
+        ex_linea if ex_linea else None,
+        "",
+        cierre,
+        "",
+        "Un saludo,",
+        "Ricardo"
+    ]
+
+    mensaje = "\n".join(l for l in lineas if l is not None)
 
     import urllib.parse
     url = f"https://wa.me/{telefono}?text={urllib.parse.quote(mensaje)}"
@@ -1335,6 +1531,164 @@ def ver_consolidado():
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Ruta: sección IA (chatbot + análisis de curso) ────────────────────────────
+# ── Ruta: proxy IA — generar mensaje Moodle via Groq ─────────────────────────
+@formacion_bp.route("/formacion/ia/generar_mensaje_moodle", methods=["POST"])
+@login_required
+def ia_generar_mensaje_moodle():
+    import os, requests as _req
+    from dotenv import load_dotenv as _ldenv
+    _ldenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+    datos   = request.get_json(silent=True) or {}
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "GROQ_API_KEY no configurada en .env"}), 500
+
+    nombre   = datos.get("nombre", "")
+    curso    = datos.get("curso", "")
+    progreso = datos.get("progreso", 0)
+    examenes = datos.get("examenes", "0/0/0")
+    supera   = datos.get("supera", False)
+    inicio   = datos.get("inicio", "")
+    fin      = datos.get("fin", "")
+    tipo     = datos.get("tipo", "seguimiento")
+
+    meses = ["enero","febrero","marzo","abril","mayo","junio",
+             "julio","agosto","septiembre","octubre","noviembre","diciembre"]
+    def fmt_f(val):
+        if not val: return ""
+        try:
+            from datetime import datetime as _dt
+            d = _dt.strptime(str(val)[:10], "%Y-%m-%d")
+            return f"{d.day} de {meses[d.month-1]} de {d.year}"
+        except Exception:
+            return str(val)
+
+    inicio_fmt = fmt_f(inicio)
+    fin_fmt    = fmt_f(fin)
+
+    tipos_desc = {
+        "seguimiento":  "seguimiento amable del progreso",
+        "felicitacion": "felicitación por superar el 75%",
+        "advertencia":  "aviso urgente por progreso bajo",
+        "recordatorio": "recordatorio de curso pendiente",
+        "libre":        "mensaje libre personalizado",
+    }
+    tipo_desc = tipos_desc.get(tipo, "seguimiento")
+
+    prompt = f"""Escribe un mensaje de Moodle en español para un alumno de formación online.
+Tipo de mensaje: {tipo_desc}
+
+Datos del alumno:
+- Nombre: {nombre} (usa solo nombre y primer apellido)
+- Curso: {curso}
+- Progreso: {progreso}%
+- Exámenes: {examenes} (formato realizados/superados/totales)
+- Supera el 75%: {'Sí' if supera else 'No'}
+{f'- Fecha inicio: {inicio_fmt}' if inicio_fmt else ''}
+{f'- Fecha fin: {fin_fmt}' if fin_fmt else ''}
+
+Instrucciones:
+- Tono cercano, profesional y positivo
+- Menciona fechas en formato "día de mes de año"
+- Usa los datos reales del alumno
+- Mensaje conciso (máximo 150 palabras)
+- Devuelve SOLO un JSON con dos campos: "asunto" y "mensaje"
+- Sin markdown, sin explicaciones, solo el JSON
+"""
+
+    try:
+        resp = _req.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "max_tokens": 500,
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=20
+        )
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"].strip()
+        # Limpiar posibles backticks
+        content = content.replace("```json", "").replace("```", "").strip()
+        import json as _json
+        result = _json.loads(content)
+        return jsonify({"asunto": result.get("asunto",""), "mensaje": result.get("mensaje","")})
+    except _req.exceptions.ConnectionError as e:
+        return jsonify({"error": f"Sin conexión a internet o Groq caído: {str(e)}"}), 500
+    except _req.exceptions.Timeout:
+        return jsonify({"error": "Timeout: Groq tardó demasiado"}), 500
+    except _req.exceptions.HTTPError as e:
+        return jsonify({"error": f"Error HTTP {e.response.status_code}: {e.response.text[:200]}"}), 500
+    except _json.JSONDecodeError as e:
+        return jsonify({"error": f"IA devolvió respuesta no válida: {content[:200]}"}), 500
+    except Exception as e:
+        import traceback
+        return jsonify({"error": f"{type(e).__name__}: {str(e)}", "detalle": traceback.format_exc()[-500:]}), 500
+
+
+
+
+@formacion_bp.route("/formacion/alumno/observaciones/<int:alumno_id>", methods=["POST"])
+@login_required
+def add_observacion(alumno_id):
+    tutor_id = session["user_id"]
+    texto = (request.get_json(silent=True) or {}).get("texto", "").strip()
+    if not texto:
+        return jsonify({"error": "Texto vacío"}), 400
+    conn = get_form_conn()
+    conn.execute(
+        "INSERT INTO observaciones_alumno (alumno_id, tutor_id, texto) VALUES (%s, %s, %s)",
+        (alumno_id, tutor_id, texto)
+    )
+    conn.commit()
+    # Devolver la observación recién creada
+    row = conn.execute(
+        "SELECT id, texto, created_at FROM observaciones_alumno "
+        "WHERE alumno_id=%s AND tutor_id=%s ORDER BY id DESC LIMIT 1",
+        (alumno_id, tutor_id)
+    ).fetchone()
+    conn.close()
+    return jsonify({
+        "id":    row["id"],
+        "texto": row["texto"],
+        "fecha": str(row["created_at"])[:16].replace("T", " ") if row["created_at"] else ""
+    })
+
+
+@formacion_bp.route("/formacion/alumno/observaciones/borrar/<int:obs_id>", methods=["POST"])
+@login_required
+def del_observacion(obs_id):
+    tutor_id = session["user_id"]
+    conn = get_form_conn()
+    conn.execute(
+        "DELETE FROM observaciones_alumno WHERE id=%s AND tutor_id=%s",
+        (obs_id, tutor_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ── Observaciones de alumno ────────────────────────────────────────────────────
+@formacion_bp.route("/formacion/alumno/observaciones/<int:alumno_id>")
+@login_required
+def get_observaciones(alumno_id):
+    tutor_id = session["user_id"]
+    conn = get_form_conn()
+    rows = conn.execute(
+        "SELECT id, texto, created_at FROM observaciones_alumno "
+        "WHERE alumno_id=%s AND tutor_id=%s ORDER BY created_at DESC",
+        (alumno_id, tutor_id)
+    ).fetchall()
+    conn.close()
+    return jsonify([{
+        "id":    r["id"],
+        "texto": r["texto"],
+        "fecha": str(r["created_at"])[:16] if r["created_at"] else ""
+    } for r in rows])
+
+
 @formacion_bp.route("/formacion/ia")
 @login_required
 def formacion_ia():
@@ -1461,6 +1815,191 @@ def ia_sugerencias():
 
 
 # ── Ruta: exportar alumnos a Excel ────────────────────────────────────────────
+
+def _fmt_fecha(val):
+    """Convierte YYYY-MM-DD a DD/MM/YYYY, devuelve '—' si vacío."""
+    if not val:
+        return "—"
+    try:
+        from datetime import datetime as _dtt
+        return _dtt.strptime(str(val)[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return str(val)
+
+
+# ── Ruta: exportar Excel por curso seleccionado ───────────────────────────────
+@formacion_bp.route("/formacion/exportar_curso_excel")
+@login_required
+def exportar_curso_excel():
+    import io as _io
+    from datetime import datetime as _dt
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from flask import send_file
+
+    tutor_id = session["user_id"]
+    curso    = request.args.get("curso", "").strip()
+
+    conn = get_form_conn()
+    query = "SELECT * FROM alumnos WHERE tutor_id=? AND (archivado IS NULL OR archivado=0)"
+    params = [tutor_id]
+    if curso:
+        query += " AND curso=?"
+        params.append(curso)
+    query += " ORDER BY progreso DESC, nombre ASC"
+    alumnos = [dict(a) for a in conn.execute(query, params).fetchall()]
+    # Cargar observaciones de todos los alumnos del tutor
+    obs_rows = conn.execute(
+        "SELECT alumno_id, texto, created_at FROM observaciones_alumno WHERE tutor_id=? ORDER BY created_at ASC",
+        (tutor_id,)
+    ).fetchall()
+    obs_map = {}
+    for ob in obs_rows:
+        aid = ob["alumno_id"]
+        fecha = str(ob["created_at"] or "")[:10]
+        linea = f"{fecha}: {ob['texto']}" if fecha else ob["texto"]
+        obs_map.setdefault(aid, []).append(linea)
+    conn.close()
+
+    C_DARK    = "1E3A5F"
+    C_GREEN   = "2D9D78"
+    C_AMBER   = "D4A017"
+    C_RED_TXT = "C0392B"
+    C_RED_BG  = "FDECEA"
+    C_ALT     = "F0F4F8"
+    C_WHITE   = "FFFFFF"
+    C_BORDER  = "CBD5E1"
+
+    def thin():
+        s = Side(style="thin", color=C_BORDER)
+        return Border(left=s, right=s, top=s, bottom=s)
+
+    def hdr(cell, text, bg=None):
+        cell.value     = text
+        cell.font      = Font(bold=True, color=C_WHITE, name="Arial", size=10)
+        cell.fill      = PatternFill("solid", fgColor=bg or C_DARK)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border    = thin()
+
+    wb = Workbook()
+    ws = wb.active
+    titulo_curso = curso if curso else "Todos los cursos"
+    ws.title = titulo_curso[:28] if len(titulo_curso) > 28 else titulo_curso
+
+    # ── Título ──
+    ws.merge_cells("A1:I1")
+    c = ws["A1"]
+    c.value     = f"{titulo_curso}  ·  {_dt.now().strftime('%d/%m/%Y')}  ·  {len(alumnos)} alumnos"
+    c.font      = Font(bold=True, size=13, color=C_DARK, name="Arial")
+    c.fill      = PatternFill("solid", fgColor="E8F0FA")
+    c.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 28
+    ws.row_dimensions[2].height = 5
+
+    # ── KPIs en fila 2 ──
+    contables  = [a for a in alumnos if not a.get("no_llamar")]
+    n_cont     = len(contables)
+    superan    = sum(1 for a in contables if a.get("supera_75"))
+    pct_exito  = round(superan / n_cont * 100, 1) if n_cont else 0
+    avg_prog   = round(sum(float(a.get("progreso") or 0) for a in contables) / n_cont, 1) if n_cont else 0
+    no_llamar_n = len(alumnos) - n_cont
+
+    kpis = [
+        ("Total alumnos", len(alumnos)),
+        ("Superan 75%",   superan),
+        ("Tasa éxito",    f"{pct_exito}%"),
+        ("Prog. medio",   f"{avg_prog}%"),
+        ("No Participa",     no_llamar_n),
+    ]
+    for c_i, (lbl, val) in enumerate(kpis, 1):
+        cl = ws.cell(3, c_i, lbl)
+        cl.font      = Font(bold=True, size=8, color="64748B", name="Arial")
+        cl.fill      = PatternFill("solid", fgColor="E8F0FA")
+        cl.alignment = Alignment(horizontal="center")
+        cv = ws.cell(4, c_i, val)
+        cv.font      = Font(bold=True, size=13, color=C_DARK, name="Arial")
+        cv.fill      = PatternFill("solid", fgColor="E8F0FA")
+        cv.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[3].height = 16
+    ws.row_dimensions[4].height = 26
+    ws.row_dimensions[5].height = 5
+
+    # ── Cabeceras ──
+    COLS = ["#", "Nombre", "Progreso (%)", "Ex. Realizados", "Ex. Superados", "Ex. Totales", "Fecha Inicio", "Fecha Fin", "Supera 75%", "Teléfono", "Estado", "Observaciones"]
+    ws.row_dimensions[6].height = 30
+    for c_i, h in enumerate(COLS, 1):
+        hdr(ws.cell(6, c_i), h, bg="4A6FA5" if h == "Observaciones" else None)
+
+    # ── Datos ──
+    for r_i, a in enumerate(alumnos, 7):
+        es_no_llamar = bool(a.get("no_llamar"))
+        p = float(a.get("progreso") or 0)
+        obs_texto = "\n".join(obs_map.get(a.get("id"), []))
+        ws.row_dimensions[r_i].height = max(18, 15 * len(obs_map.get(a.get("id"), []))) if obs_texto else 18
+
+        bg_row = C_RED_BG if es_no_llamar else (C_ALT if r_i % 2 == 0 else C_WHITE)
+        rf     = PatternFill("solid", fgColor=bg_row)
+
+        prog_color = C_GREEN if p >= 75 else (C_AMBER if p >= 50 else C_RED_TXT)
+
+        def dc(col, val, fmt=None, bold=False, center=False, color=None):
+            cell = ws.cell(r_i, col, val)
+            cell.fill      = rf
+            cell.font      = Font(name="Arial", size=9, bold=bold or es_no_llamar,
+                                  color=C_RED_TXT if es_no_llamar else (color or "1E293B"))
+            cell.border    = thin()
+            cell.alignment = Alignment(horizontal="center" if center else "left", vertical="center")
+            if fmt: cell.number_format = fmt
+
+        nombre_val = a.get("nombre", "") + (" 🔕 NO Participa" if es_no_llamar else "")
+        dc(1, r_i - 6,                                 center=True, color="64748B")
+        dc(2, nombre_val,                              bold=True)
+        dc(3, p,                                       fmt='0.0"%"', center=True, bold=True, color=prog_color)
+        _ep = _parse_examenes(a.get("examenes"))
+        _ex_color = "7C3AED" if (_ep[2] > 0 and (_ep[0] / _ep[2]) < 0.75) else None
+        dc(4, _ep[0], center=True, color=_ex_color)
+        dc(5, _ep[1], center=True, color=_ex_color)
+        dc(6, _ep[2], center=True, color=_ex_color)
+        dc(7, _fmt_fecha(a.get("fecha_inicio")),        center=True)
+        dc(8, _fmt_fecha(a.get("fecha_fin")),           center=True)
+        dc(9, "✔ Sí" if a.get("supera_75") else "✖ No", center=True, bold=True,
+           color=C_GREEN if a.get("supera_75") else C_AMBER)
+        dc(10, a.get("telefono", "—") or "—")
+        estado = "✅ Supera 75%" if a.get("supera_75") else "⚠ Bajo 75%"
+        dc(11, estado, center=True, bold=True,
+           color=C_GREEN if a.get("supera_75") else C_AMBER)
+        # Observaciones
+        obs_cell = ws.cell(r_i, 12, obs_texto or "—")
+        obs_cell.fill      = rf
+        obs_cell.font      = Font(name="Arial", size=8, italic=bool(obs_texto), color="334155")
+        obs_cell.border    = thin()
+        obs_cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+
+    last = 6 + len(alumnos)
+    ws.auto_filter.ref = f"A6:{get_column_letter(len(COLS))}{last}"
+    ws.freeze_panes    = "A7"
+    for i, w in enumerate([4, 28, 14, 10, 10, 10, 14, 14, 12, 18, 16, 40], 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    # ── Leyenda ──
+    ley_row = last + 2
+    ws.merge_cells(start_row=ley_row, start_column=1, end_row=ley_row, end_column=4)
+    lc = ws.cell(ley_row, 1, "🔕 Fondo rojo = alumno marcado como No Participa (excluido de estadísticas)")
+    lc.font      = Font(italic=True, size=8, color=C_RED_TXT, name="Arial")
+    lc.fill      = PatternFill("solid", fgColor=C_RED_BG)
+    lc.alignment = Alignment(horizontal="left")
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    safe = titulo_curso.replace("/","_").replace("\\","_").replace(" ","_")[:40]
+    fname = f"formacion_{safe}_{_dt.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @formacion_bp.route("/formacion/exportar_excel")
 @login_required
 def exportar_excel():
@@ -1477,6 +2016,17 @@ def exportar_excel():
     alumnos  = [dict(a) for a in conn.execute(
         "SELECT * FROM alumnos WHERE tutor_id=? AND (archivado IS NULL OR archivado=0) ORDER BY curso, nombre", (tutor_id,)
     ).fetchall()]
+    # Cargar observaciones
+    obs_rows2 = conn.execute(
+        "SELECT alumno_id, texto, created_at FROM observaciones_alumno WHERE tutor_id=? ORDER BY created_at ASC",
+        (tutor_id,)
+    ).fetchall()
+    obs_map2 = {}
+    for ob in obs_rows2:
+        aid = ob["alumno_id"]
+        fecha = str(ob["created_at"] or "")[:10]
+        linea = f"{fecha}: {ob['texto']}" if fecha else ob["texto"]
+        obs_map2.setdefault(aid, []).append(linea)
     conn.close()
 
     # ── Colores ──
@@ -1508,7 +2058,7 @@ def exportar_excel():
     ws.title = "Alumnos"
 
     # Título
-    ws.merge_cells("A1:K1")
+    ws.merge_cells("A1:N1")
     c = ws["A1"]
     c.value     = f"Informe de Formación — {_dt.now().strftime('%d/%m/%Y %H:%M')}  ·  {len(alumnos)} alumnos"
     c.font      = Font(bold=True, size=13, color=C_DARK, name="Arial")
@@ -1518,15 +2068,16 @@ def exportar_excel():
     ws.row_dimensions[2].height = 6
 
     # Cabeceras
-    COLS = ["#","Curso","Nombre","Progreso (%)","Exámenes","Fecha Inicio",
-            "Fecha Fin","Supera 75%","Teléfono","Estado","Importado"]
+    COLS = ["#","Curso","Nombre","Progreso (%)","Ex. Realizados","Ex. Superados","Ex. Totales","Fecha Inicio",
+            "Fecha Fin","Supera 75%","Teléfono","Estado","Importado","Observaciones"]
     ws.row_dimensions[3].height = 30
     for c_i, h in enumerate(COLS, 1):
-        hdr(ws.cell(3, c_i), h)
+        hdr(ws.cell(3, c_i), h, bg="4A6FA5" if h == "Observaciones" else None)
 
     # Datos
     for r, a in enumerate(alumnos, 4):
-        ws.row_dimensions[r].height = 18
+        obs_texto2 = "\n".join(obs_map2.get(a.get("id"), []))
+        ws.row_dimensions[r].height = max(18, 15 * len(obs_map2.get(a.get("id"), []))) if obs_texto2 else 18
         rf = PatternFill("solid", fgColor=C_ALT if r % 2 == 0 else C_WHITE)
         p  = a.get("progreso", 0) or 0
 
@@ -1543,16 +2094,26 @@ def exportar_excel():
         dc(2,  a.get("curso","—") or "—")
         dc(3,  a.get("nombre",""),         bold=True)
         dc(4,  p,                          fmt='0.0"%"', center=True, bold=True, color=prog_color)
-        dc(5,  a.get("examenes",0) or 0,  center=True)
-        dc(6,  a.get("fecha_inicio","—") or "—", center=True)
-        dc(7,  a.get("fecha_fin","—")    or "—", center=True)
-        dc(8,  "✔ Sí" if a.get("supera_75") else "✖ No", center=True, bold=True,
+        _ep2 = _parse_examenes(a.get("examenes"))
+        _ex2_color = "7C3AED" if (_ep2[2] > 0 and (_ep2[0] / _ep2[2]) < 0.75) else None
+        dc(5,  _ep2[0], center=True, color=_ex2_color)
+        dc(6,  _ep2[1], center=True, color=_ex2_color)
+        dc(7,  _ep2[2], center=True, color=_ex2_color)
+        dc(8,  _fmt_fecha(a.get("fecha_inicio")), center=True)
+        dc(9,  _fmt_fecha(a.get("fecha_fin")),    center=True)
+        dc(10, "✔ Sí" if a.get("supera_75") else "✖ No", center=True, bold=True,
            color=C_GREEN if a.get("supera_75") else C_AMBER)
-        dc(9,  a.get("telefono","—") or "—")
-        dc(10, "✅ Supera 75%" if a.get("supera_75") else "⚠ Bajo 75%",
+        dc(11, a.get("telefono","—") or "—")
+        dc(12, "✅ Supera 75%" if a.get("supera_75") else "⚠ Bajo 75%",
            center=True, bold=True,
            color=C_GREEN if a.get("supera_75") else C_AMBER)
-        dc(11, (a.get("created_at","") or "")[:10], center=True, color="64748B")
+        dc(13, (a.get("created_at","") or "")[:10], center=True, color="64748B")
+        # Observaciones
+        obs_cell2 = ws.cell(r, 14, obs_texto2 or "—")
+        obs_cell2.fill      = rf
+        obs_cell2.font      = Font(name="Arial", size=8, italic=bool(obs_texto2), color="334155")
+        obs_cell2.border    = thin()
+        obs_cell2.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
     last_data = 3 + len(alumnos)
     if len(alumnos) > 0:
@@ -1562,7 +2123,7 @@ def exportar_excel():
         )
     ws.auto_filter.ref = f"A3:{get_column_letter(len(COLS))}{last_data}"
     ws.freeze_panes    = "A4"
-    for i, w in enumerate([5,32,22,14,10,14,14,12,18,16,18], 1):
+    for i, w in enumerate([5,32,22,14,10,10,10,14,14,12,18,16,18,40], 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
     # ════════════════════════════════════════
@@ -1591,7 +2152,7 @@ def exportar_excel():
         resumen[k]["total"]  += 1
         resumen[k]["superan"] += int(a.get("supera_75") or 0)
         resumen[k]["prog"]   += float(a.get("progreso") or 0)
-        resumen[k]["exam"]   += int(a.get("examenes") or 0)
+        resumen[k]["exam"]   += _parse_examenes(a.get("examenes"))[0]
 
     totales = {"total":0,"superan":0,"prog":0,"exam":0}
     for r, (curso, d) in enumerate(sorted(resumen.items()), 4):
@@ -1689,7 +2250,7 @@ def exportar_excel():
             (a.get("curso","—") or "—",             None,      False, False, "1E293B"),
             (a.get("nombre",""),                    None,      False, True,  "1E293B"),
             (a.get("progreso",0),                   '0.0"%"', True,  True,  C_RED),
-            (a.get("examenes",0) or 0,              None,      True,  False, "1E293B"),
+            (_fmt_examenes(a.get("examenes")),       None,      True,  False, "1E293B"),
             (a.get("fecha_inicio","—") or "—",      None,      True,  False, "1E293B"),
             (a.get("fecha_fin","—")    or "—",      None,      True,  False, "1E293B"),
             (a.get("telefono","—")     or "—",      None,      False, False, "1E293B"),

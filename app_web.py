@@ -13,10 +13,12 @@ from openpyxl.cell.cell import MergedCell
 
 from db_mysql import get_tareas_conn, column_exists
 from formacion import formacion_bp, inicializar_formacion
+from cursos import cursos_bp
 
 app = Flask(__name__)
 app.secret_key = "clave_secreta_muy_segura"
 app.register_blueprint(formacion_bp)
+app.register_blueprint(cursos_bp)
 
 # ── Perfiles ───────────────────────────────────────────────────────────────────
 # 0 = Usuario  |  1 = Admin  |  2 = SuperAdmin

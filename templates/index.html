@@ -161,7 +161,7 @@
 
             <td data-label="Descripción">
               <div style="display:flex; align-items:center; gap:.45rem; flex-wrap:wrap;">
-                <span class="task-toggle priv-field"
+                <span class="task-toggle"
                       data-real="{{ tdesc | e }}"
                       onclick="revealPriv(event, this); toggleDetail({{ tid }})"
                       style="cursor:pointer;" title="Clic para revelar">{{ tdesc }}</span>
@@ -173,7 +173,7 @@
                 </span>
                 {% endif %}
                 {% if tnotas %}
-                <span class="priv-field"
+                <span class=""
                       data-real="{{ tnotas | e }}"
                       onclick="revealPriv(event, this)"
                       title="Clic para ver notas"

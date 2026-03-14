@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% block title %}Repositorio de Cursos{% endblock %}
+
+{% block content %}
+
+<!-- ══════════ HEADER ══════════ -->
+<div class="sticky-top-bar">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div>
+      <h4 style="font-weight:700;margin:0;">📦 Repositorio de Cursos</h4>
+      <div style="font-family:var(--mono);font-size:.75rem;color:var(--text-muted);margin-top:.2rem;">
+        Sube y descarga los contenidos de cada curso en formato .zip
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <button onclick="abrirModalSubir()" class="btn btn-g-primary">
+        ⬆ Subir ZIP
+      </button>
+      <a href="{{ url_for('formacion.formacion') }}" class="btn btn-g-ghost">← Volver</a>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ ALERTA FLASH ══════════ -->
+<div id="alerta-repo" style="display:none;" class="galert galert-danger mb-3"></div>
+<div id="exito-repo"  style="display:none;" class="galert galert-success mb-3"></div>
+
+<!-- ══════════ STATS KPI ══════════ -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.5rem;">
+
+  <div class="gcard" style="padding:.9rem 1.2rem;">
+    <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:.3rem;">Cursos guardados</div>
+    <div style="font-size:2rem;font-weight:800;color:var(--accent);font-family:var(--mono);">{{ zips|length }}</div>
+  </div>
+
+  <div class="gcard" style="padding:.9rem 1.2rem;">
+    <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:.3rem;">Espacio total</div>
+    <div style="font-size:2rem;font-weight:800;color:var(--text);font-family:var(--mono);" id="kpi-espacio">
+      {% set total_mb = zips | sum(attribute='size_mb') %}
+      {% if total_mb >= 1 %}{{ "%.1f"|format(total_mb) }} MB{% else %}{{ (total_mb * 1024)|round|int }} KB{% endif %}
+    </div>
+  </div>
+
+  <div class="gcard" style="padding:.9rem 1.2rem;">
+    <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:.3rem;">Límite por archivo</div>
+    <div style="font-size:2rem;font-weight:800;color:var(--text-muted);font-family:var(--mono);">{{ max_mb }} MB</div>
+  </div>
+
+</div>
+
+<!-- ══════════ TABLA DE ZIPs ══════════ -->
+{% if zips %}
+<div class="gcard">
+  <div class="gcard-header">
+    <span>🗂</span>
+    <span class="gcard-title">Archivos disponibles</span>
+    <div style="margin-left:auto;">
+      <input type="text" id="buscador-repo" placeholder="Buscar…"
+        class="form-control" style="width:180px;font-size:.82rem;"
+        oninput="filtrarRepo(this.value)">
+    </div>
+  </div>
+  <div class="gcard-body" style="padding:0;">
+    <table class="gtable" id="tabla-repo">
+      <thead>
+        <tr>
+          <th>Nombre del curso</th>
+          <th style="width:90px;text-align:center;">Archivos</th>
+          <th style="width:90px;text-align:center;">Tamaño</th>
+          <th style="width:140px;text-align:center;">Subido</th>
+          <th style="width:160px;text-align:center;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-repo">
+        {% for z in zips %}
+        <tr data-nombre="{{ z.nombre }}" data-search="{{ z.nombre_sin_ext|lower }}">
+          <td>
+            <div style="display:flex;align-items:center;gap:.6rem;">
+              <span style="font-size:1.3rem;">📦</span>
+              <div>
+                <div class="nombre-celda" style="font-weight:600;font-size:.88rem;">{{ z.nombre_sin_ext }}</div>
+                <div style="font-size:.72rem;color:var(--text-muted);font-family:var(--mono);">{{ z.nombre }}</div>
+              </div>
+            </div>
+          </td>
+          <td style="text-align:center;">
+            <span style="font-family:var(--mono);font-size:.85rem;color:var(--accent);">
+              {{ z.num_files }}
+            </span>
+          </td>
+          <td style="text-align:center;">
+            <span style="font-family:var(--mono);font-size:.85rem;">{{ z.size_str }}</span>
+          </td>
+          <td style="text-align:center;font-size:.8rem;color:var(--text-muted);">
+            {{ z.fecha }}
+          </td>
+          <td style="text-align:center;">
+            <div style="display:flex;gap:.4rem;justify-content:center;">
+              <a href="{{ url_for('cursos.descargar_zip', nombre=z.nombre) }}"
+                 class="btn btn-g-success btn-sm" title="Descargar">
+                ⬇ Descargar
+              </a>
+              <button onclick="renombrarZip('{{ z.nombre }}')"
+                      class="btn btn-g-ghost btn-sm" title="Renombrar">✏</button>
+              <button onclick="eliminarZip('{{ z.nombre }}')"
+                      class="btn btn-g-danger btn-sm" title="Eliminar">🗑</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div id="repo-vacio" style="display:none;padding:2rem;text-align:center;color:var(--text-muted);font-size:.88rem;">
+      No se encontraron resultados.
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- Estado vacío -->
+<div class="gcard" style="text-align:center;padding:3rem 2rem;">
+  <div style="font-size:3rem;margin-bottom:1rem;">📂</div>
+  <div style="font-weight:700;font-size:1.1rem;margin-bottom:.5rem;">No hay cursos guardados aún</div>
+  <div style="color:var(--text-muted);font-size:.88rem;margin-bottom:1.5rem;">
+    Sube un archivo .zip con los contenidos del curso para empezar.
+  </div>
+  <button onclick="abrirModalSubir()" class="btn btn-g-primary">⬆ Subir primer ZIP</button>
+</div>
+{% endif %}
+
+
+<!-- ══════════════════════════════════════════════ -->
+<!-- MODAL: SUBIR ZIP                               -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="modal-subir" style="display:none;position:fixed;inset:0;z-index:1050;
+  background:rgba(0,0,0,.45);backdrop-filter:blur(3px);
+  display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border-radius:16px;border:1px solid var(--border);
+    width:100%;max-width:520px;padding:1.75rem;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
+      <div style="font-weight:700;font-size:1.05rem;">⬆ Subir archivo ZIP</div>
+      <button onclick="cerrarModalSubir()"
+        style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text-muted);">✕</button>
+    </div>
+
+    <!-- Drop zone -->
+    <div id="drop-zone"
+      style="border:2px dashed var(--border);border-radius:12px;padding:2.5rem 1rem;
+             text-align:center;cursor:pointer;transition:all .2s;margin-bottom:1rem;
+             background:var(--bg3);"
+      onclick="document.getElementById('input-zip').click()"
+      ondragover="dropOver(event)" ondragleave="dropLeave(event)" ondrop="dropFile(event)">
+      <div style="font-size:2.5rem;margin-bottom:.5rem;">📦</div>
+      <div style="font-weight:600;margin-bottom:.25rem;">Arrastra el ZIP aquí</div>
+      <div style="font-size:.8rem;color:var(--text-muted);">o haz clic para seleccionar · Máx. {{ max_mb }} MB</div>
+      <div id="drop-filename" style="margin-top:.75rem;font-size:.82rem;
+        color:var(--accent);font-family:var(--mono);display:none;"></div>
+    </div>
+    <input type="file" id="input-zip" accept=".zip" style="display:none" onchange="archivoSeleccionado(this)">
+
+    <!-- Nombre personalizado -->
+    <div style="margin-bottom:1rem;">
+      <label style="font-size:.8rem;font-weight:600;margin-bottom:.35rem;display:block;">
+        Nombre del curso <span style="color:var(--text-muted);font-weight:400;">(opcional — si no se pone, usa el nombre del archivo)</span>
+      </label>
+      <select id="sel-curso-zip" class="form-select" style="margin-bottom:.5rem;">
+        <option value="">— Seleccionar de mis cursos activos —</option>
+        {% for c in cursos %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" id="input-nombre-curso" class="form-control"
+        placeholder="O escribe un nombre personalizado…" style="font-size:.85rem;">
+    </div>
+
+    <!-- Barra de progreso -->
+    <div id="progreso-subida" style="display:none;margin-bottom:1rem;">
+      <div style="font-size:.8rem;margin-bottom:.3rem;color:var(--text-muted);" id="prog-texto">Subiendo…</div>
+      <div style="background:var(--border);border-radius:99px;height:8px;">
+        <div id="prog-barra" style="background:var(--accent);height:8px;border-radius:99px;
+          width:0%;transition:width .3s;"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:.75rem;justify-content:flex-end;">
+      <button onclick="cerrarModalSubir()" class="btn btn-g-ghost">Cancelar</button>
+      <button onclick="subirZip()" class="btn btn-g-primary" id="btn-subir-modal" disabled>
+        ⬆ Subir
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<style>
+.galert-success {
+  background: rgba(45,157,120,.1);
+  border: 1px solid var(--green, #2D9D78);
+  color: var(--green, #2D9D78);
+  border-radius: 8px;
+  padding: .65rem 1rem;
+  font-size: .85rem;
+}
+#drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb, 45,157,120), .08);
+}
+</style>
+
+<script>
+let _archivoSeleccionado = null;
+
+/* ── Modal subir ─────────────────────────── */
+function abrirModalSubir() {
+  document.getElementById('modal-subir').style.display = 'flex';
+}
+function cerrarModalSubir() {
+  document.getElementById('modal-subir').style.display = 'none';
+  _archivoSeleccionado = null;
+  document.getElementById('drop-filename').style.display = 'none';
+  document.getElementById('input-zip').value = '';
+  document.getElementById('input-nombre-curso').value = '';
+  document.getElementById('sel-curso-zip').value = '';
+  document.getElementById('btn-subir-modal').disabled = true;
+  document.getElementById('progreso-subida').style.display = 'none';
+}
+
+/* ── Sincronizar select → input texto ───── */
+document.getElementById('sel-curso-zip').addEventListener('change', function() {
+  if (this.value) document.getElementById('input-nombre-curso').value = this.value;
+});
+
+/* ── Drag & drop ─────────────────────────── */
+function dropOver(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('drag-over');
+}
+function dropLeave(e) {
+  document.getElementById('drop-zone').classList.remove('drag-over');
+}
+function dropFile(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) _setArchivo(f);
+}
+function archivoSeleccionado(input) {
+  if (input.files[0]) _setArchivo(input.files[0]);
+}
+function _setArchivo(f) {
+  if (!f.name.toLowerCase().endsWith('.zip')) {
+    mostrarAlerta('Solo se aceptan archivos .zip');
+    return;
+  }
+  _archivoSeleccionado = f;
+  const el = document.getElementById('drop-filename');
+  el.textContent = f.name + ' · ' + (f.size > 1048576
+    ? (f.size/1048576).toFixed(1) + ' MB'
+    : (f.size/1024).toFixed(0) + ' KB');
+  el.style.display = 'block';
+  document.getElementById('btn-subir-modal').disabled = false;
+}
+
+/* ── Subir ───────────────────────────────── */
+async function subirZip() {
+  if (!_archivoSeleccionado) return;
+  const nombreCustom = document.getElementById('input-nombre-curso').value.trim();
+
+  const fd = new FormData();
+  fd.append('archivo', _archivoSeleccionado);
+  fd.append('nombre_curso', nombreCustom);
+
+  document.getElementById('btn-subir-modal').disabled = true;
+  document.getElementById('progreso-subida').style.display = 'block';
+
+  // Simular progreso (upload real sin XHR no tiene eventos)
+  let pct = 0;
+  const barra = document.getElementById('prog-barra');
+  const txt   = document.getElementById('prog-texto');
+  const timer = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 15, 85);
+    barra.style.width = pct + '%';
+  }, 200);
+
+  try {
+    const resp = await fetch('/formacion/cursos/subir', { method: 'POST', body: fd });
+    clearInterval(timer);
+    barra.style.width = '100%';
+    const data = await resp.json();
+
+    if (data.error) {
+      txt.textContent = '✖ ' + data.error;
+      txt.style.color = 'var(--red)';
+      document.getElementById('btn-subir-modal').disabled = false;
+      return;
+    }
+
+    txt.textContent = '✔ Subido correctamente';
+    setTimeout(() => {
+      cerrarModalSubir();
+      location.reload();
+    }, 800);
+
+  } catch(err) {
+    clearInterval(timer);
+    txt.textContent = '✖ Error de conexión';
+    txt.style.color = 'var(--red)';
+    document.getElementById('btn-subir-modal').disabled = false;
+  }
+}
+
+/* ── Eliminar ────────────────────────────── */
+async function eliminarZip(nombre) {
+  if (!confirm(`¿Eliminar el archivo "${nombre}"? Esta acción no se puede deshacer.`)) return;
+  const resp = await fetch('/formacion/cursos/eliminar/' + encodeURIComponent(nombre), { method: 'POST' });
+  const data = await resp.json();
+  if (data.ok) {
+    document.querySelector(`tr[data-nombre="${nombre}"]`)?.remove();
+    mostrarExito('Archivo eliminado.');
+    // Mostrar vacío si no quedan filas
+    if (!document.querySelector('#tbody-repo tr')) {
+      document.getElementById('tabla-repo').style.display = 'none';
+      document.getElementById('repo-vacio').style.display = 'block';
+    }
+  } else {
+    mostrarAlerta(data.error || 'Error al eliminar');
+  }
+}
+
+/* ── Renombrar ───────────────────────────── */
+async function renombrarZip(nombre) {
+  const sinExt   = nombre.replace(/\.zip$/i, '');
+  const nuevoNombre = prompt('Nuevo nombre para el archivo:', sinExt);
+  if (!nuevoNombre || nuevoNombre.trim() === sinExt) return;
+
+  const resp = await fetch('/formacion/cursos/renombrar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nombre_old: nombre, nombre_new: nuevoNombre.trim() })
+  });
+  const data = await resp.json();
+  if (data.ok) {
+    mostrarExito('Archivo renombrado.');
+    location.reload();
+  } else {
+    mostrarAlerta(data.error || 'Error al renombrar');
+  }
+}
+
+/* ── Buscador ────────────────────────────── */
+function filtrarRepo(q) {
+  q = q.toLowerCase();
+  let visibles = 0;
+  document.querySelectorAll('#tbody-repo tr').forEach(tr => {
+    const match = tr.dataset.search.includes(q);
+    tr.style.display = match ? '' : 'none';
+    if (match) visibles++;
+  });
+  document.getElementById('repo-vacio').style.display = visibles === 0 ? 'block' : 'none';
+}
+
+/* ── Alertas ─────────────────────────────── */
+function mostrarAlerta(msg) {
+  const el = document.getElementById('alerta-repo');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+function mostrarExito(msg) {
+  const el = document.getElementById('exito-repo');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3000);
+}
+</script>
+
+{% endblock %}
